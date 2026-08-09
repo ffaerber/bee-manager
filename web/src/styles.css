@@ -1,0 +1,156 @@
+/* Palette roles from the reference data-viz palette. Dark values are declared
+   under both the media query (OS setting) and the [data-theme] scope (explicit
+   toggle), so the toggle wins in both directions. */
+:root {
+  color-scheme: light;
+  --surface-1: #fcfcfb;
+  --plane: #f9f9f7;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #898781;
+  --grid: #e1e0d9;
+  --baseline: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.1);
+
+  --series-1: #2a78d6;
+  --seq-250: #86b6ef;
+  --seq-450: #2a78d6;
+  --seq-600: #184f95;
+
+  --good: #0ca30c;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme='light'])) {
+    color-scheme: dark;
+    --surface-1: #1a1a19;
+    --plane: #0d0d0d;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #898781;
+    --grid: #2c2c2a;
+    --baseline: #383835;
+    --border: rgba(255, 255, 255, 0.1);
+    --series-1: #3987e5;
+    --seq-250: #184f95;
+    --seq-450: #3987e5;
+    --seq-600: #86b6ef;
+  }
+}
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --surface-1: #1a1a19;
+  --plane: #0d0d0d;
+  --text-primary: #ffffff;
+  --text-secondary: #c3c2b7;
+  --text-muted: #898781;
+  --grid: #2c2c2a;
+  --baseline: #383835;
+  --border: rgba(255, 255, 255, 0.1);
+  --series-1: #3987e5;
+  --seq-250: #184f95;
+  --seq-450: #3987e5;
+  --seq-600: #86b6ef;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--plane);
+  color: var(--text-primary);
+  font: 14px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+h1, h2 { font-weight: 600; margin: 0; }
+h1 { font-size: 18px; }
+h2 { font-size: 14px; color: var(--text-secondary); letter-spacing: 0.02em; }
+
+.wrap { max-width: 1100px; margin: 0 auto; padding: 24px 20px 64px; }
+.row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.spread { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.muted { color: var(--text-muted); }
+.secondary { color: var(--text-secondary); }
+.mono { font-variant-numeric: tabular-nums; }
+
+/* Hero — exactly one per view. Proportional figures, not tabular. */
+.hero-label { color: var(--text-secondary); font-size: 13px; }
+.hero-value { font-size: 52px; font-weight: 600; line-height: 1.05; }
+.hero-unit { font-size: 20px; color: var(--text-secondary); font-weight: 400; margin-left: 6px; }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.tile-label { color: var(--text-secondary); font-size: 12px; margin-bottom: 4px; }
+.tile-value { font-size: 24px; font-weight: 600; }
+.tile-sub { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+
+table { width: 100%; border-collapse: collapse; }
+th {
+  text-align: left; font-weight: 600; font-size: 12px; color: var(--text-secondary);
+  padding: 6px 10px 6px 0; border-bottom: 1px solid var(--grid); white-space: nowrap;
+}
+td { padding: 9px 10px 9px 0; border-bottom: 1px solid var(--grid); vertical-align: middle; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+tr:last-child td { border-bottom: none; }
+.scroll-x { overflow-x: auto; }
+
+/* Meter: fill carries severity; the track is a washed step of the fill's own
+   ramp so state reads across the whole bar rather than just the filled part. */
+.meter {
+  display: block; height: 8px; border-radius: 4px; overflow: hidden;
+  min-width: 80px; background: var(--grid);
+}
+.meter > i { display: block; height: 100%; border-radius: 4px; background: var(--seq-450); min-width: 2px; }
+.meter.good { background: color-mix(in srgb, var(--good) 20%, transparent); }
+.meter.warning { background: color-mix(in srgb, var(--warning) 22%, transparent); }
+.meter.critical { background: color-mix(in srgb, var(--critical) 20%, transparent); }
+.meter.good > i { background: var(--good); }
+.meter.warning > i { background: var(--warning); }
+.meter.critical > i { background: var(--critical); }
+
+.status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+.status::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); }
+.status.good::before { background: var(--good); }
+.status.warning::before { background: var(--warning); }
+.status.critical::before { background: var(--critical); }
+
+/* Horizontal bars: <=24px thick, 4px rounded data-end, square at baseline. */
+.bars { display: grid; gap: 8px; }
+.bar-row { display: grid; grid-template-columns: 44px 1fr auto; gap: 10px; align-items: center; }
+.bar-track { display: block; height: 20px; }
+.bar-fill {
+  display: block; height: 20px; background: var(--series-1);
+  border-radius: 0 4px 4px 0; min-width: 2px; transition: width 120ms ease-out;
+}
+.bar-row.is-selected .bar-fill { background: var(--seq-600); }
+.bar-row.is-dim .bar-fill { opacity: 0.45; }
+
+input[type='range'] { width: 100%; accent-color: var(--series-1); }
+label.field { display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
+button {
+  font: inherit; padding: 7px 14px; border-radius: 7px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface-1); color: var(--text-primary);
+}
+button.primary { background: var(--series-1); border-color: transparent; color: #fff; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+input[type='text'], input[type='number'] {
+  font: inherit; padding: 7px 10px; border-radius: 7px;
+  border: 1px solid var(--border); background: var(--plane); color: var(--text-primary);
+}
+.warn {
+  border-left: 3px solid var(--warning); background: color-mix(in srgb, var(--warning) 8%, transparent);
+  padding: 8px 12px; border-radius: 0 6px 6px 0; margin-top: 8px; font-size: 13px;
+}
+.err { border-left-color: var(--critical); background: color-mix(in srgb, var(--critical) 8%, transparent); }
+.banner {
+  padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; font-size: 13px;
+  border: 1px solid var(--border);
+}
+.banner.armed { border-left: 3px solid var(--critical); }
+.banner.safe { border-left: 3px solid var(--good); }

@@ -1,0 +1,31 @@
+services:
+  swarm-stamp-monitor:
+    build: .
+    image: ghcr.io/ffaerber/swarm-stamp-monitor:main
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      # Reached over the Bee node's own network, so the node itself never has
+      # to be exposed. This service is the only public surface.
+      BEE_URL: ${BEE_URL:-http://bee:1633}
+    volumes:
+      - monitor-data:/data
+    ports:
+      - "3010:3000"
+    networks: [bee, default]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+networks:
+  # The network the Bee container already runs on. `docker network ls` to find
+  # its real name, then set it here (or rename this to match).
+  bee:
+    external: true
+    name: ${BEE_NETWORK:-bee_default}
+
+volumes:
+  monitor-data:
