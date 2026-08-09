@@ -71,6 +71,30 @@ wallet signature over the content hash and a timestamp (browsers, which cannot).
 the loss instead: per-request size, per-address bytes and count, and a per-app
 daily byte budget that is the actual blast radius.
 
+Limits follow the auth method, because an API key is a real secret and a wallet
+is not: 64 MB per request for key-authenticated pipelines, 5 MB for signatures.
+The shared per-app daily budget is *not* raised for pipelines — it bounds a bad
+day for both.
+
+### Deploying a site
+
+The endpoint accepts a tar as a directory, using Bee's own header names, so an
+existing deploy script only needs its URL changed:
+
+```sh
+curl -X POST "https://stamps.example.org/api/apps/mysite/upload" \
+  -H "x-api-key: $DEPLOY_KEY" \
+  -H "Swarm-Collection: true" \
+  -H "Swarm-Index-Document: index.html" \
+  -H "Swarm-Error-Document: index.html" \
+  -H "Content-Type: application/x-tar" \
+  --data-binary @<(cd dist && tar cf - .)
+# -> {"reference":"…"}
+```
+
+Point an ENS content hash at that reference and the site is live. This is the
+path that lets the Bee node itself stay off the internet.
+
 ## Running
 
 ```sh

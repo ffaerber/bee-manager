@@ -217,7 +217,7 @@ export function createServer(deps: ServerDeps) {
       }, app.apiKeyHash);
       if (!auth.ok) { set.status = 401; return { error: auth.reason }; }
 
-      const verdict = checkQuota(db, app, auth.address, bytes.byteLength, limitsFor(app));
+      const verdict = checkQuota(db, app, auth.address, bytes.byteLength, limitsFor(app, auth.via));
       if (!verdict.allowed) {
         set.status = 429;
         if (verdict.appBudgetExhausted) {
@@ -229,10 +229,20 @@ export function createServer(deps: ServerDeps) {
         return { error: verdict.reason, remaining: verdict.remaining };
       }
 
+      // Collection upload: a tar of a built site, so `make deploy-frontend` can
+      // post here instead of to the Bee node — which is what lets Bee stay off
+      // the public internet. Header names mirror Bee's own so existing deploy
+      // scripts only need their URL changed.
+      const collection = /^(1|true|yes)$/i.test(String(headers['swarm-collection'] ?? ''));
+
       try {
         const reference = await bee.upload(app.batchId, bytes, {
-          name: (headers['x-filename'] as string) || undefined,
-          contentType: (headers['x-content-type'] as string) || 'application/octet-stream',
+          name: (headers['x-filename'] as string) || app.name,
+          contentType: (headers['x-content-type'] as string)
+            || (collection ? 'application/x-tar' : 'application/octet-stream'),
+          collection,
+          indexDocument: (headers['swarm-index-document'] as string) || undefined,
+          errorDocument: (headers['swarm-error-document'] as string) || undefined,
         });
         db.recordUpload(app.name, auth.address, bytes.byteLength, reference);
         db.setAppReference(app.name, reference);

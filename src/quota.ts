@@ -37,11 +37,35 @@ export interface QuotaVerdict {
   remaining: { appBytes: number; addressBytes: number; addressUploads: number };
 }
 
+const MB = 1024 * 1024;
+
+/**
+ * Browser callers, authenticated by wallet signature. Addresses are free to
+ * mint, so these are deliberately small: the per-request cap keeps any single
+ * upload cheap, and the app-wide budget is the real blast radius.
+ */
 export const DEFAULT_LIMITS: QuotaLimits = {
-  maxUploadBytes: 5 * 1024 * 1024,
-  appDailyBytes: 256 * 1024 * 1024,
-  addressDailyBytes: 16 * 1024 * 1024,
+  maxUploadBytes: 5 * MB,
+  appDailyBytes: 256 * MB,
+  addressDailyBytes: 16 * MB,
   addressDailyUploads: 100,
+};
+
+/**
+ * Deploy pipelines, authenticated by a per-app API key — a secret only you
+ * hold, so the caller is trusted in a way a browser never is. A site deploy is
+ * one tar of the whole build (pinkchainsaw's is ~900 kB, but a media-heavy site
+ * is easily tens of MB), which the browser-facing 5 MB cap would reject.
+ *
+ * The app-wide daily budget is intentionally NOT raised here: it is shared with
+ * the browser path and is what bounds a bad day, so it stays the ceiling for
+ * both.
+ */
+export const PIPELINE_LIMITS: QuotaLimits = {
+  ...DEFAULT_LIMITS,
+  maxUploadBytes: 64 * MB,
+  addressDailyBytes: 256 * MB,
+  addressDailyUploads: 50,
 };
 
 /** Chunks a payload occupies — what actually consumes batch capacity. */
@@ -94,7 +118,15 @@ export function checkQuota(
   return { allowed: true, reason: `within quota (${mb(remaining.appBytes)} left for ${app.name} today)`, remaining };
 }
 
-/** Parse limits from an app row's overrides, falling back to the defaults. */
-export function limitsFor(_app: AppRow, overrides: Partial<QuotaLimits> = {}): QuotaLimits {
-  return { ...DEFAULT_LIMITS, ...overrides };
+/**
+ * Limits for a caller, chosen by how it authenticated. An API key is a real
+ * secret held by a deploy pipeline; a signature is not, because anyone can make
+ * a wallet.
+ */
+export function limitsFor(
+  _app: AppRow,
+  via: 'api-key' | 'signature' = 'signature',
+  overrides: Partial<QuotaLimits> = {},
+): QuotaLimits {
+  return { ...(via === 'api-key' ? PIPELINE_LIMITS : DEFAULT_LIMITS), ...overrides };
 }

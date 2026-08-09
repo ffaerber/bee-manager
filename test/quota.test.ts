@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'bun:test';
 import { Db, type AppRow } from '../src/db';
-import { checkQuota, chunksFor, DEFAULT_LIMITS, type QuotaLimits } from '../src/quota';
+import { checkQuota, chunksFor, limitsFor, DEFAULT_LIMITS, PIPELINE_LIMITS, type QuotaLimits } from '../src/quota';
 
 const MB = 1024 * 1024;
 const ADDR = '0xAbC0000000000000000000000000000000000001';
@@ -108,5 +108,36 @@ describe('defaults', () => {
   it('ship conservatively — a single upload cannot exceed the app budget', () => {
     expect(DEFAULT_LIMITS.maxUploadBytes).toBeLessThan(DEFAULT_LIMITS.appDailyBytes);
     expect(DEFAULT_LIMITS.addressDailyBytes).toBeLessThanOrEqual(DEFAULT_LIMITS.appDailyBytes);
+  });
+});
+
+describe('limits by authentication method', () => {
+  it('gives a deploy pipeline room for a whole site tar', () => {
+    // pinkchainsaw's build is ~900 kB, but a media-heavy site is tens of MB —
+    // the browser-facing 5 MB cap would reject a legitimate deploy.
+    const pipeline = limitsFor(app, 'api-key');
+    expect(pipeline.maxUploadBytes).toBe(64 * MB);
+    expect(checkQuota(db, app, 'ci', 40 * MB, pipeline).allowed).toBe(true);
+  });
+
+  it('keeps browser callers on the small cap', () => {
+    const browser = limitsFor(app, 'signature');
+    expect(browser.maxUploadBytes).toBe(5 * MB);
+    expect(checkQuota(db, app, ADDR, 40 * MB, browser).allowed).toBe(false);
+  });
+
+  it('defaults to the browser limits when the method is unknown', () => {
+    expect(limitsFor(app).maxUploadBytes).toBe(DEFAULT_LIMITS.maxUploadBytes);
+  });
+
+  it('does NOT raise the shared app budget for pipelines — it bounds a bad day for both', () => {
+    expect(limitsFor(app, 'api-key').appDailyBytes).toBe(limitsFor(app, 'signature').appDailyBytes);
+  });
+
+  it('still stops a pipeline once the shared app budget is gone', () => {
+    for (let i = 0; i < 5; i++) db.recordUpload(app.name, `0x${i}`, 60 * MB, 'r');
+    const v = checkQuota(db, app, 'ci', 10 * MB, limitsFor(app, 'api-key'));
+    expect(v.allowed).toBe(false);
+    expect(v.appBudgetExhausted).toBe(true);
   });
 });

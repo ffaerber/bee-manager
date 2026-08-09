@@ -185,7 +185,16 @@ export class BeeClient {
   async upload(
     batchId: string,
     body: Uint8Array,
-    opts: { name?: string; contentType?: string; collection?: boolean; indexDocument?: string } = {},
+    opts: {
+      name?: string;
+      contentType?: string;
+      /** Upload a tar as a directory ("collection") rather than a single blob. */
+      collection?: boolean;
+      /** Served for the collection root — index.html for a site. */
+      indexDocument?: string;
+      /** Served for unmatched paths; an SPA points this at index.html too. */
+      errorDocument?: string;
+    } = {},
   ): Promise<string> {
     const headers: Record<string, string> = {
       'Swarm-Postage-Batch-Id': batchId,
@@ -194,6 +203,7 @@ export class BeeClient {
     if (opts.collection) {
       headers['Swarm-Collection'] = 'true';
       if (opts.indexDocument) headers['Swarm-Index-Document'] = opts.indexDocument;
+      if (opts.errorDocument) headers['Swarm-Error-Document'] = opts.errorDocument;
     }
     const qs = opts.name ? `?name=${encodeURIComponent(opts.name)}` : '';
     const d = await this.request(`/bzz${qs}`, { method: 'POST', headers, body: body as any });
