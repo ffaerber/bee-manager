@@ -180,8 +180,23 @@ cp .env.example .env      # BEE_URL, caps, webhook
 docker compose up -d      # joins the Bee node's network; dashboard on :3010
 ```
 
-Put the dashboard behind basicauth — it has a Buy button, which makes it a
-spending endpoint. Set `ADMIN_TOKEN` as well for defence in depth.
+## Authentication
+
+All of it lives in the application — there is no proxy-level auth to rely on.
+
+| Surface | Credential |
+|---|---|
+| `/api/admin/*`, node passthrough | `x-admin-token` |
+| `/bytes`, `/bzz`, `/stamps` | per-app `x-api-key` (or wallet signature) |
+| the dashboard page itself | none — it is inert without a token |
+
+**It fails closed.** If no admin token is configured, the admin API and the node
+passthrough return `503` rather than running unauthenticated. Refusing to serve
+is a visible outage; serving without auth is a silent one — and these routes buy
+postage batches.
+
+Supply it as `ADMIN_TOKEN_FILE` (a docker swarm secret, so it stays out of git
+and out of `docker service inspect`) or `ADMIN_TOKEN` for local runs.
 
 ```sh
 bun install && bun test   # 120 tests

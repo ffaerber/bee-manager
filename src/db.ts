@@ -273,6 +273,16 @@ export class Db {
     );
   }
 
+  /**
+   * Find an app by its API key hash. Needed by the Bee-compatible routes, where
+   * Bee's own API has no place to name an app — the key is the only identifier
+   * the request carries.
+   */
+  appByApiKeyHash(hash: string): AppRow | null {
+    const r = this.db.query(`SELECT * FROM apps WHERE api_key_hash = ?`).get(hash) as any;
+    return r ? toApp(r) : null;
+  }
+
   app(name: string): AppRow | null {
     const r = this.db.query(`SELECT * FROM apps WHERE name = ?`).get(name) as any;
     return r ? toApp(r) : null;

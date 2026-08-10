@@ -33,18 +33,39 @@ export default function App() {
 
   useEffect(() => { load(); const t = setInterval(load, 30_000); return () => clearInterval(t); }, [load]);
 
-  if (err) {
+  // The API is protected by the admin token, not by the proxy, so the page
+  // itself is served to anyone — it is inert without a token. Treat "no token"
+  // and "rejected token" as the same thing: show the login.
+  const needsToken = err !== null && /401|403|admin token|disabled/i.test(err);
+  if (needsToken || (err && !state)) {
+    const disabled = /disabled/i.test(err ?? '');
     return (
       <div className="wrap">
         <h1>Swarm stamp monitor</h1>
-        <div className="card">
-          <div className="warn err">{err}</div>
-          <p className="secondary">If this is an auth failure, set the admin token:</p>
-          <div className="row">
-            <input type="text" value={token} placeholder="admin token"
-              onChange={(e) => setTok(e.target.value)} />
-            <button onClick={() => { api.setToken(token); load(); }}>Save and retry</button>
-          </div>
+        <div className="card" style={{ maxWidth: 520 }}>
+          <h2 style={{ marginBottom: 12 }}>{disabled ? 'Admin API disabled' : 'Admin token required'}</h2>
+          {disabled ? (
+            <p className="secondary">
+              The service is running without an admin token, so the admin API is switched off
+              rather than left open. Set <code>ADMIN_TOKEN_FILE</code> (a swarm secret) or
+              <code> ADMIN_TOKEN</code> and restart.
+            </p>
+          ) : (
+            <p className="secondary">
+              This dashboard can buy postage batches, so every call is authenticated by the
+              service itself. The token is kept in this browser only.
+            </p>
+          )}
+          {!disabled && (
+            <form className="row" style={{ marginTop: 12 }}
+              onSubmit={(e) => { e.preventDefault(); api.setToken(token.trim()); setErr(null); load(); }}>
+              <input type="password" value={token} placeholder="admin token" autoFocus
+                style={{ flex: 1, minWidth: 240 }}
+                onChange={(e) => setTok(e.target.value)} />
+              <button className="primary" type="submit" disabled={!token.trim()}>Unlock</button>
+            </form>
+          )}
+          {err && !disabled && <div className="warn err" style={{ marginTop: 12 }}>{err}</div>}
         </div>
       </div>
     );
@@ -64,6 +85,8 @@ export default function App() {
           </span>
           <button onClick={async () => { setBusy(true); await api.poll().catch(() => {}); await load(); setBusy(false); }}
             disabled={busy}>{busy ? 'Polling…' : 'Poll now'}</button>
+          <button onClick={() => { api.setToken(''); setTok(''); setState(null); setErr('admin token required'); }}
+            title="Forget the token stored in this browser">Sign out</button>
         </div>
       </div>
 

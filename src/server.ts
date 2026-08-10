@@ -16,13 +16,13 @@
  */
 
 import { Elysia, t } from 'elysia';
-import { staticPlugin } from '@elysiajs/static';
 import { existsSync } from 'node:fs';
 import { BeeClient, BeeIndeterminateError } from './bee';
 import { Db } from './db';
 import { Alerter } from './alerts';
 import { Poller } from './poller';
-import { authenticate, sha256Hex } from './auth';
+import { createBeeApi } from './beeApi';
+import { authenticate, sha256Hex, safeEqual } from './auth';
 import { checkQuota, limitsFor } from './quota';
 import { burnRate, quote, depthLadder, recommendDepth, reviewQuote, formatBytes, MIN_DEPTH, MAX_DEPTH } from './wizard';
 import { plurToBzz, bzzToPlur, storedBytes, capacityBytes, costPlur } from './math';
@@ -50,14 +50,37 @@ export function createServer(deps: ServerDeps) {
       return { error: (error as any)?.message ?? String(error) };
     })
 
-    .get('/health', () => ({ ok: true, lastPollOk: poller.last?.ok ?? null }))
+    /**
+     * One health endpoint serving two callers: the container healthcheck (any
+     * 200) and bee-js `isConnected()`, which looks for Bee's `status: "ok"`.
+     * It reports OUR health — if the last poll failed we cannot upload, and
+     * claiming ok would tell a client writes will work when they will not.
+     */
+    .get('/health', () => {
+      const ok = poller.last?.ok ?? false;
+      return {
+        status: ok ? 'ok' : 'degraded',
+        version: 'swarm-stamp-monitor',
+        apiVersion: '8.1.0',
+        lastPollOk: poller.last?.ok ?? null,
+      };
+    })
 
     // ── admin ────────────────────────────────────────────────────────────
     .group('/api/admin', (admin) =>
       admin
+        /**
+         * Fails CLOSED. With no proxy-level auth in front any more, an unset
+         * token must disable the admin API rather than open it — these routes
+         * buy postage batches. Refusing to serve is a visible outage; serving
+         * without auth is a silent one.
+         */
         .onBeforeHandle(({ headers, set }) => {
-          if (!adminToken) return; // relying on the reverse proxy
-          if (headers['x-admin-token'] !== adminToken) {
+          if (!adminToken) {
+            set.status = 503;
+            return { error: 'admin API disabled: no ADMIN_TOKEN configured' };
+          }
+          if (!safeEqual(String(headers['x-admin-token'] ?? ''), adminToken)) {
             set.status = 401;
             return { error: 'admin token required' };
           }
@@ -341,14 +364,29 @@ export function createServer(deps: ServerDeps) {
       }
     });
 
-  // The built dashboard, when present. Absent in dev (Vite serves it and
-  // proxies /api here) and in a bare API-only deployment.
+  // The dashboard, served as explicit routes rather than a static-plugin
+  // catch-all. The plugin claims every unmatched path and 404s it, which would
+  // swallow the Bee passthrough below; naming the three real paths keeps
+  // precedence deterministic.
   const webDist = process.env.WEB_DIST ?? 'web/dist';
   if (existsSync(webDist)) {
-    app.use(staticPlugin({ assets: webDist, prefix: '/', indexHTML: true }));
+    const index = () => new Response(Bun.file(`${webDist}/index.html`), {
+      headers: { 'content-type': 'text/html; charset=utf-8' },
+    });
+    app.get('/', index);
+    app.get('/index.html', index);
+    app.get('/assets/*', ({ params, set }: any) => {
+      const file = Bun.file(`${webDist}/assets/${params['*']}`);
+      set.status = 200;
+      return new Response(file);
+    });
   } else {
     console.log(`[server] no dashboard at ${webDist} — API only`);
   }
+
+  // Bee-compatible façade + admin-only passthrough. Registered LAST so every
+  // route above wins; bee-js cannot keep a path prefix, so this must be at root.
+  app.use(createBeeApi({ bee, db, poller, adminToken }));
 
   return app;
 }

@@ -260,6 +260,21 @@ export class BeeClient {
     });
   }
 
+  /** Raw passthrough, for proxying reads. Caller owns the Response body. */
+  async raw(path: string, init?: RequestInit): Promise<Response> {
+    return fetch(`${this.baseUrl}${path}`, { ...init, signal: AbortSignal.timeout(this.timeoutMs) });
+  }
+
+  /** POST /bytes — raw data upload, what bee-js `uploadData` uses. */
+  async uploadBytes(batchId: string, body: Uint8Array, contentType = 'application/octet-stream'): Promise<string> {
+    const d = await this.request('/bytes', {
+      method: 'POST',
+      headers: { 'Swarm-Postage-Batch-Id': batchId, 'Content-Type': contentType },
+      body: body as any,
+    });
+    return d.reference;
+  }
+
   /** Add `amountPerChunk` PLUR per chunk to an existing batch, extending its TTL. */
   async topUp(batchId: string, amountPerChunk: bigint): Promise<string> {
     if (amountPerChunk <= 0n) throw new BeeError('top-up amount must be positive');
