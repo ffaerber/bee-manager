@@ -121,6 +121,20 @@ Immutability is fixed at creation, so the wrong choice means buying a
 replacement. Pass `{"immutable": true}` deliberately when you want write-once
 semantics and are sizing depth to never collide.
 
+## Managing apps
+
+```sh
+GET    /api/admin/apps            # the registry
+GET    /api/admin/apps/by-batch   # which apps share which batch
+DELETE /api/admin/apps/:name      # remove a registry entry
+```
+
+Deleting an app is **registry-only** — it never touches the batch. Several apps
+can point at the same batch, so removing one must not abandon a stamp another is
+still uploading with; the response reports which apps still reference that batch,
+and retiring the batch itself stays a separate, explicit act. Upload history is
+kept, so re-registering a name does not hand it a fresh daily quota.
+
 ## Fire-and-forget stamps
 
 The poller renews every batch it sees, which is wrong for a deliberately

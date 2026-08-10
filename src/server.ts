@@ -101,6 +101,36 @@ export function createServer(deps: ServerDeps) {
 
         .get('/actions', ({ query }) => json(db.recentActions(Number(query.limit ?? 100))))
         .get('/apps', () => json(db.apps()))
+        /** Which apps share which batch — check before retiring either. */
+        .get('/apps/by-batch', () => json(db.appsByBatch()))
+
+        /**
+         * Remove an app from the registry.
+         *
+         * Registry-only: the batch is untouched. Apps may share a batch, so
+         * deleting one must not abandon a stamp another is still uploading
+         * with — retiring a batch is a separate act (PATCH .../managed).
+         * The response says which batch is now possibly unreferenced so the
+         * caller can decide.
+         */
+        .delete('/apps/:name', ({ params, set }) => {
+          const app = db.app(params.name);
+          if (!app) { set.status = 404; return { error: `unknown app "${params.name}"` }; }
+          db.deleteApp(params.name);
+          const stillUsing = app.batchId
+            ? db.apps().filter((a) => a.batchId === app.batchId).map((a) => a.name)
+            : [];
+          return json({
+            deleted: params.name,
+            batchId: app.batchId,
+            batchUntouched: true,
+            otherAppsOnThatBatch: stillUsing,
+            note: app.batchId && stillUsing.length === 0
+              ? 'No app references that batch now. It is still live and still managed — retire it explicitly if you want it to lapse.'
+              : undefined,
+          });
+        })
+
         .get('/batches', () => json(db.batches()))
 
         /**

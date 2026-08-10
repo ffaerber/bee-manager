@@ -220,3 +220,49 @@ describe('label editing', () => {
     expect(db.isManaged('a')).toBe(false);
   });
 });
+
+describe('app deletion', () => {
+  const mk = (name: string, batchId: string | null) => db.upsertApp({
+    name, policy: 'ephemeral', depth: 17, durationDays: 10,
+    batchId, budgetPlurPerDay: 0n, ensName: null, apiKeyHash: 'h',
+  });
+
+  it('removes the registry row', () => {
+    mk('typo', 'b1');
+    expect(db.deleteApp('typo')).toBe(true);
+    expect(db.app('typo')).toBeNull();
+  });
+
+  it('reports an unknown app rather than silently succeeding', () => {
+    expect(db.deleteApp('never-existed')).toBe(false);
+  });
+
+  it('leaves a shared batch usable by the apps that remain', () => {
+    mk('site-a', 'shared'); mk('site-b', 'shared');
+    db.deleteApp('site-a');
+    expect(db.app('site-b')!.batchId).toBe('shared');
+  });
+
+  it('keeps upload history — a re-registered name must not get a fresh quota', () => {
+    mk('app', 'b1');
+    db.recordUpload('app', '0xabc', 1024, 'ref');
+    db.deleteApp('app');
+    expect(db.bytesUploaded('app')).toBe(1024);
+  });
+
+  it('does not touch the batch record', () => {
+    db.seenBatch('b1', 'live', 17, false);
+    mk('app', 'b1');
+    db.deleteApp('app');
+    expect(db.batches().some((b) => b.batchId === 'b1')).toBe(true);
+    expect(db.isManaged('b1')).toBe(true);
+  });
+
+  it('groups apps by batch so sharing is visible before retiring either', () => {
+    mk('a', 'shared'); mk('b', 'shared'); mk('c', 'own'); mk('d', null);
+    const g = db.appsByBatch();
+    expect(g['shared'].sort()).toEqual(['a', 'b']);
+    expect(g['own']).toEqual(['c']);
+    expect(g['(none)']).toEqual(['d']);
+  });
+});

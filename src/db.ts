@@ -290,6 +290,33 @@ export class Db {
     this.db.query(`UPDATE apps SET last_reference = ? WHERE name = ?`).run(reference, name);
   }
 
+  /**
+   * Remove an app from the registry. Returns false if it was not there.
+   *
+   * Deliberately touches ONLY the registry row. It does not unmanage, dilute or
+   * abandon the batch: several apps may share one batch, so removing an app
+   * must never imply retiring a stamp that something else is still uploading
+   * with. Retiring a batch is a separate, explicit act.
+   *
+   * Upload history is kept too — the ledger is an audit trail, and deleting it
+   * because a name was retired would let a re-registered name start with a
+   * clean daily quota.
+   */
+  deleteApp(name: string): boolean {
+    const res = this.db.query(`DELETE FROM apps WHERE name = ?`).run(name);
+    return res.changes > 0;
+  }
+
+  /** Apps grouped by the batch they upload with — several may share one. */
+  appsByBatch(): Record<string, string[]> {
+    const out: Record<string, string[]> = {};
+    for (const a of this.apps()) {
+      const key = a.batchId ?? '(none)';
+      (out[key] ??= []).push(a.name);
+    }
+    return out;
+  }
+
   // ── uploads / quota accounting ───────────────────────────────────────
 
   recordUpload(appName: string, address: string, bytes: number, reference: string | null, now = Date.now()) {
