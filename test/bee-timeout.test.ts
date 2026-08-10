@@ -54,3 +54,40 @@ describe('write timeouts are indeterminate, not failures', () => {
     } finally { s.stop(true); }
   });
 });
+
+describe('buyBatch immutability default', () => {
+  /** Capture the headers Bee would receive. */
+  function captureServer(seen: { headers?: Headers }) {
+    return Bun.serve({
+      port: 0,
+      fetch(req) { seen.headers = req.headers; return Response.json({ batchID: 'ab'.repeat(32) }); },
+    });
+  }
+
+  it('defaults to MUTABLE — an immutable batch dies on the first full bucket', async () => {
+    const seen: { headers?: Headers } = {};
+    const s = captureServer(seen);
+    try {
+      await new BeeClient(`http://localhost:${s.port}`).buyBatch(1000n, 18);
+      expect(seen.headers?.get('immutable')).toBe('false');
+    } finally { s.stop(true); }
+  });
+
+  it('never leaves the flag to Bee, whose default is immutable', async () => {
+    const seen: { headers?: Headers } = {};
+    const s = captureServer(seen);
+    try {
+      await new BeeClient(`http://localhost:${s.port}`).buyBatch(1000n, 18, { label: 'x' });
+      expect(seen.headers?.has('immutable')).toBe(true);
+    } finally { s.stop(true); }
+  });
+
+  it('still honours an explicit immutable request', async () => {
+    const seen: { headers?: Headers } = {};
+    const s = captureServer(seen);
+    try {
+      await new BeeClient(`http://localhost:${s.port}`).buyBatch(1000n, 18, { immutable: true });
+      expect(seen.headers?.get('immutable')).toBe('true');
+    } finally { s.stop(true); }
+  });
+});

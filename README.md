@@ -109,6 +109,18 @@ curl -X POST "https://stamps.example.org/api/apps/mysite/upload" \
 Point an ENS content hash at that reference and the site is live. This is the
 path that lets the Bee node itself stay off the internet.
 
+## Mutable by default
+
+Batches are bought **mutable** unless you ask otherwise. Bee's own default is
+immutable, and on an immutable batch the moment any single bucket fills the
+*whole batch* is treated as 100% utilised and refuses further uploads — with no
+dilution out of that state. A mutable batch recycles the oldest chunk in the
+full bucket instead, so it degrades gracefully.
+
+Immutability is fixed at creation, so the wrong choice means buying a
+replacement. Pass `{"immutable": true}` deliberately when you want write-once
+semantics and are sizing depth to never collide.
+
 ## Fire-and-forget stamps
 
 The poller renews every batch it sees, which is wrong for a deliberately
