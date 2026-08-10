@@ -64,7 +64,9 @@ beforeAll(async () => {
 afterAll(() => { upstream?.stop(true); monitor?.stop?.(); });
 
 describe('an unmodified bee-js client can drive the monitor', () => {
-  it('isConnected() succeeds — /health speaks Bee shape', async () => {
+  // bee-js probes the BASE URL root for this, not /health — verified against
+  // bee-js v11. The root must answer 200 whether or not the dashboard is built.
+  it('isConnected() succeeds', async () => {
     expect(await bee.isConnected()).toBe(true);
   });
 

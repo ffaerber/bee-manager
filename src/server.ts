@@ -369,6 +369,17 @@ export function createServer(deps: ServerDeps) {
   // swallow the Bee passthrough below; naming the three real paths keeps
   // precedence deterministic.
   const webDist = process.env.WEB_DIST ?? 'web/dist';
+
+  /**
+   * The root must always answer 200: bee-js's `isConnected()` probes the base
+   * URL itself, not /health (verified against bee-js v11 — it GETs `/`). If the
+   * dashboard is not built, serve a small status document instead so a client
+   * pointed here still reports connected.
+   */
+  if (!existsSync(webDist)) {
+    app.get('/', () => ({ status: 'ok', service: 'swarm-stamp-monitor', dashboard: false }));
+  }
+
   if (existsSync(webDist)) {
     const index = () => new Response(Bun.file(`${webDist}/index.html`), {
       headers: { 'content-type': 'text/html; charset=utf-8' },

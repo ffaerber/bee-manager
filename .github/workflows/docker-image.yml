@@ -19,7 +19,13 @@ jobs:
         uses: oven-sh/setup-bun@v2
 
       - name: Test
-        run: bun install && bun test
+        # Build the dashboard first: the served artifact affects routing (the
+        # root path is the dashboard when present, a status document when not),
+        # and CI should exercise what actually ships.
+        run: |
+          bun install
+          (cd web && bun install && bun run build)
+          bun test
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
