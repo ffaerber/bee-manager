@@ -15,7 +15,7 @@ import { createServer } from './server';
 
 const cfg = loadConfig();
 const db = new Db(cfg.dbPath);
-const bee = new BeeClient(cfg.beeUrl, cfg.beeTimeoutMs);
+const bee = new BeeClient(cfg.beeUrl, cfg.beeTimeoutMs, cfg.beeWriteTimeoutMs);
 const alerter = new Alerter(db, cfg.webhookUrl, cfg.alertCooldownMs);
 const poller = new Poller(cfg, bee, db, alerter);
 const adminToken = process.env.ADMIN_TOKEN || null;

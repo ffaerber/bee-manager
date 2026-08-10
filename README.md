@@ -54,6 +54,20 @@ topped up but the cap stopped me" is the message that must not be lost. Actions
 are written to the ledger as `submitted` *before* the Bee call, so a crash
 mid-transaction leaves evidence instead of a duplicate on the next poll.
 
+### Timeouts on writes are indeterminate, never failures
+
+Buying, topping up and diluting are on-chain transactions. **Abandoning the HTTP
+request does not cancel the transaction** — it can still be mined minutes later.
+So a write that times out client-side raises `BeeIndeterminateError`, the action
+stays `submitted` (which is what blocks a retry), and the caller is told not to
+retry. Recording it as `failed` would both under-count the daily spend cap and
+invite buying the same thing twice.
+
+Writes therefore get their own budget (`BEE_WRITE_TIMEOUT_MS`, default 5 min)
+rather than the read timeout (`BEE_TIMEOUT_MS`, 15s). Found the hard way: a
+15-second timeout on a batch purchase returned an error, recorded `failed`, and
+the batch appeared on the node three minutes later regardless.
+
 ## The upload API
 
 Dapps POST to this service instead of to Bee, which is what lets the node come

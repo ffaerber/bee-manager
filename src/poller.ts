@@ -8,7 +8,7 @@
  * rather than a silent double-spend on the next poll.
  */
 
-import { BeeClient, type Batch, type ChainState, type Wallet } from './bee';
+import { BeeClient, BeeIndeterminateError, type Batch, type ChainState, type Wallet } from './bee';
 import { Db } from './db';
 import { Alerter } from './alerts';
 import { evaluateAll, findDisappeared, totalBurnPer30Days, type EvalContext, type Plan } from './evaluate';
@@ -226,6 +226,17 @@ export class Poller {
       });
     } catch (e: any) {
       const msg = e?.message ?? String(e);
+      if (e instanceof BeeIndeterminateError) {
+        // Leave it `submitted`: the transaction may still be mined, and
+        // `submitted` is what the in-flight check reads to refuse a retry.
+        // Marking it failed here is how you buy the same thing twice.
+        await this.alerter.send({
+          event: 'topup_failed', level: 'error', batchId: plan.batchId,
+          message: `${kind} on ${plan.batchId.slice(0, 12)}… timed out client-side. It may still ` +
+                   `have been mined — left in-flight, NOT retried. Check the batch before acting.`,
+        });
+        return;
+      }
       this.db.updateActionStatus(id, 'failed', msg);
       await this.alerter.send({
         event: 'topup_failed', level: 'error', batchId: plan.batchId,

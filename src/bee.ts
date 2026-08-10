@@ -71,19 +71,46 @@ function beeErrorFrom(status: number, body: string): BeeError {
   return new BeeError(body.slice(0, 200) || `HTTP ${status}`, status);
 }
 
+/**
+ * A write timed out client-side. The transaction may still be mined —
+ * abandoning an HTTP request does not cancel a blockchain transaction — so the
+ * outcome is UNKNOWN, not failed. Callers must not retry on this.
+ */
+export class BeeIndeterminateError extends Error {
+  constructor(readonly operation: string, readonly cause?: unknown) {
+    super(`${operation} timed out client-side; the transaction may still be mined — do not retry`);
+    this.name = 'BeeIndeterminateError';
+  }
+}
+
 export class BeeClient {
   constructor(
     private readonly baseUrl: string,
     private readonly timeoutMs = 15_000,
+    /**
+     * Writes create on-chain transactions and routinely take far longer than a
+     * read. A short timeout here does not make anything safer — it just means
+     * giving up while the money is already moving.
+     */
+    private readonly writeTimeoutMs = 300_000,
   ) {
     this.baseUrl = baseUrl.replace(/\/+$/, '');
   }
 
-  private async request(path: string, init?: RequestInit): Promise<any> {
-    const res = await fetch(`${this.baseUrl}${path}`, {
-      ...init,
-      signal: AbortSignal.timeout(this.timeoutMs),
-    });
+  private async request(path: string, init?: RequestInit, opts: { write?: boolean; operation?: string } = {}): Promise<any> {
+    const timeout = opts.write ? this.writeTimeoutMs : this.timeoutMs;
+    let res: Response;
+    try {
+      res = await fetch(`${this.baseUrl}${path}`, { ...init, signal: AbortSignal.timeout(timeout) });
+    } catch (e: any) {
+      // A read that times out is simply a failed read — nothing happened. A
+      // write that times out may have spent money, and must be surfaced as
+      // such so the caller records it as in-flight rather than failed.
+      if (opts.write && (e?.name === 'TimeoutError' || e?.name === 'AbortError')) {
+        throw new BeeIndeterminateError(opts.operation ?? path, e);
+      }
+      throw e;
+    }
     const body = await res.text();
     if (!res.ok) throw beeErrorFrom(res.status, body);
     return body ? JSON.parse(body) : null;
@@ -171,7 +198,8 @@ export class BeeClient {
     const qs = opts.label ? `?label=${encodeURIComponent(opts.label)}` : '';
     const headers: Record<string, string> = {};
     if (opts.immutable !== undefined) headers.immutable = String(opts.immutable);
-    const d = await this.request(`/stamps/${amountPerChunk}/${depth}${qs}`, { method: 'POST', headers });
+    const d = await this.request(`/stamps/${amountPerChunk}/${depth}${qs}`, { method: 'POST', headers },
+      { write: true, operation: `buyBatch(depth ${depth})` });
     return d.batchID;
   }
 
@@ -229,7 +257,8 @@ export class BeeClient {
   /** Add `amountPerChunk` PLUR per chunk to an existing batch, extending its TTL. */
   async topUp(batchId: string, amountPerChunk: bigint): Promise<string> {
     if (amountPerChunk <= 0n) throw new BeeError('top-up amount must be positive');
-    const d = await this.request(`/stamps/topup/${batchId}/${amountPerChunk}`, { method: 'PATCH' });
+    const d = await this.request(`/stamps/topup/${batchId}/${amountPerChunk}`, { method: 'PATCH' },
+      { write: true, operation: `topUp(${batchId.slice(0, 12)}…)` });
     return d.batchID;
   }
 
@@ -239,7 +268,8 @@ export class BeeClient {
    * should top up afterwards, not before.
    */
   async dilute(batchId: string, newDepth: number): Promise<string> {
-    const d = await this.request(`/stamps/dilute/${batchId}/${newDepth}`, { method: 'PATCH' });
+    const d = await this.request(`/stamps/dilute/${batchId}/${newDepth}`, { method: 'PATCH' },
+      { write: true, operation: `dilute(${batchId.slice(0, 12)}… -> ${newDepth})` });
     return d.batchID;
   }
 }

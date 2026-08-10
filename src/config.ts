@@ -43,6 +43,8 @@ function plur(key: string, fallbackBzz: string): bigint {
 export interface Config {
   beeUrl: string;
   beeTimeoutMs: number;
+  /** Writes are on-chain transactions; a short timeout only means giving up mid-spend. */
+  beeWriteTimeoutMs: number;
   pollIntervalMs: number;
   dbPath: string;
   port: number;
@@ -75,6 +77,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     const cfg: Config = {
       beeUrl: str('BEE_URL', 'http://bee:1633'),
       beeTimeoutMs: int('BEE_TIMEOUT_MS', 15_000, 1_000),
+      beeWriteTimeoutMs: int('BEE_WRITE_TIMEOUT_MS', 300_000, 10_000),
       pollIntervalMs: int('POLL_INTERVAL_MS', 300_000, 10_000),
       dbPath: str('DB_PATH', './data/monitor.sqlite'),
       port: int('PORT', 3000, 1),

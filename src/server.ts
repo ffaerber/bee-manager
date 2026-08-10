@@ -18,7 +18,7 @@
 import { Elysia, t } from 'elysia';
 import { staticPlugin } from '@elysiajs/static';
 import { existsSync } from 'node:fs';
-import { BeeClient } from './bee';
+import { BeeClient, BeeIndeterminateError } from './bee';
 import { Db } from './db';
 import { Alerter } from './alerts';
 import { Poller } from './poller';
@@ -204,6 +204,16 @@ export function createServer(deps: ServerDeps) {
             });
             return json({ batchId, cost: q });
           } catch (e: any) {
+            if (e instanceof BeeIndeterminateError) {
+              // Stays `submitted`, and the response says so — the batch may
+              // appear on the node minutes later. Retrying buys a second one.
+              set.status = 504;
+              return {
+                error: e.message,
+                indeterminate: true,
+                advice: 'Do not retry. Check GET /api/admin/batches after the next poll.',
+              };
+            }
             db.updateActionStatus(id, 'failed', e?.message ?? String(e));
             set.status = 502;
             return { error: e?.message ?? String(e) };
