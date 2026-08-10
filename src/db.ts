@@ -157,6 +157,16 @@ export class Db {
     return new Set(rows.map((r) => r.batch_id));
   }
 
+  /**
+   * Update the cached label. The poller refreshes this from the node on every
+   * tick anyway; writing it here just avoids the dashboard showing a stale name
+   * for up to one poll interval after a rename.
+   */
+  setLabel(batchId: string, label: string): boolean {
+    const res = this.db.query(`UPDATE batches SET label = ? WHERE batch_id = ?`).run(label, batchId);
+    return res.changes > 0;
+  }
+
   isManaged(batchId: string): boolean {
     const r = this.db.query(`SELECT managed FROM batches WHERE batch_id = ?`).get(batchId) as any;
     return r ? r.managed === 1 : true; // unknown batches default to managed

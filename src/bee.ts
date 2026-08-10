@@ -210,6 +210,22 @@ export class BeeClient {
     return d.reference;
   }
 
+  /**
+   * Rename a batch. The label is the only human-meaningful handle that lives on
+   * the node itself, so it survives this service's database being lost — and
+   * other tools discover batches by it (t4t's own manager matches on label).
+   *
+   * Bee wants JSON here; a text/plain body is rejected with 400. Verified
+   * against Bee 2.8.1 with a rename-and-revert round trip.
+   */
+  async setLabel(batchId: string, label: string): Promise<void> {
+    await this.request(`/stamps/${batchId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ label }),
+    });
+  }
+
   /** Add `amountPerChunk` PLUR per chunk to an existing batch, extending its TTL. */
   async topUp(batchId: string, amountPerChunk: bigint): Promise<string> {
     if (amountPerChunk <= 0n) throw new BeeError('top-up amount must be positive');

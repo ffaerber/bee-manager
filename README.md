@@ -105,7 +105,7 @@ short-lived one — share a file with friends, let it lapse. Two ways to opt out
 POST /api/admin/wizard/buy  {"depth":17,"days":3,"label":"tmp-holiday-pics","confirm":true}
 
 # or explicitly, at any time
-PATCH /api/admin/batches/<id>/managed  {"managed": false}
+PATCH /api/admin/batches/<id>  {"managed": false}
 ```
 
 An unmanaged batch is never topped up or diluted, and raises no low-TTL or
@@ -115,6 +115,23 @@ still appears in the dashboard and in snapshots while it lives.
 The label prefix is `UNMANAGED_LABEL_PREFIX` (default `tmp-`). Unknown batches
 always default to *managed*, so an upgrade or a lost database can never silently
 stop maintaining something you rely on.
+
+## Renaming a batch
+
+```sh
+PATCH /api/admin/batches/<id>  {"label": "photos-2026"}
+```
+
+Labels are writable on the node (`PATCH /stamps/{id}`, JSON only — verified on
+Bee 2.8.1), so this is a real rename, not a local alias: it is what other tools
+see, and it survives this service losing its database. Editable inline in the
+dashboard.
+
+Renaming a batch to the unmanaged prefix does **not** change whether it is
+managed — the two are deliberately independent, because a rename quietly
+altering spending behaviour is the kind of coupling that surprises you later.
+Note that anything discovering batches by label (t4t's own manager matches
+`T4T_STAMP_LABEL`) will stop finding a batch you rename.
 
 ## Running
 

@@ -194,3 +194,29 @@ describe('unmanaged batches', () => {
     expect(rows.find((r) => r.batchId === 'b')!.managed).toBe(false);
   });
 });
+
+describe('label editing', () => {
+  it('updates the cached label', () => {
+    db.seenBatch('a', 'old-name', 17, false);
+    expect(db.setLabel('a', 'new-name')).toBe(true);
+    expect(db.batches().find((b) => b.batchId === 'a')!.label).toBe('new-name');
+  });
+
+  it('reports an unknown batch rather than silently succeeding', () => {
+    expect(db.setLabel('nope', 'x')).toBe(false);
+  });
+
+  it('a poll refreshes the label from the node, so the node stays authoritative', () => {
+    db.seenBatch('a', 'old-name', 17, false);
+    db.setLabel('a', 'locally-renamed');
+    db.seenBatch('a', 'node-says-this', 17, false); // next poll
+    expect(db.batches().find((b) => b.batchId === 'a')!.label).toBe('node-says-this');
+  });
+
+  it('renaming does not disturb the managed flag', () => {
+    db.seenBatch('a', 'keep', 17, false);
+    db.setManaged('a', false);
+    db.setLabel('a', 'renamed');
+    expect(db.isManaged('a')).toBe(false);
+  });
+});

@@ -19,7 +19,7 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 export interface Batch {
   batchID: string; label: string; depth: number; batchTTL: number; ttlDays: number;
   utilizationRatio: number; usable: boolean; immutableFlag: boolean;
-  storedHuman: string; capacityHuman: string;
+  storedHuman: string; capacityHuman: string; managed: boolean;
 }
 export interface State {
   ok: boolean; error: string | null; msPerBlock: number;
@@ -50,5 +50,7 @@ export const getActions = () => req<Action[]>('/actions?limit=25');
 export const getLadder = (days: number, storedBytes?: string) =>
   req<Ladder>(`/wizard/ladder?days=${days}${storedBytes ? `&storedBytes=${storedBytes}` : ''}`);
 export const poll = () => req<unknown>('/poll', { method: 'POST' });
+export const patchBatch = (id: string, patch: { label?: string; managed?: boolean }) =>
+  req<unknown>(`/batches/${id}`, { method: 'PATCH', body: JSON.stringify(patch) });
 export const buy = (b: { depth: number; days: number; label?: string; immutable?: boolean; confirm?: boolean }) =>
   req<any>('/wizard/buy', { method: 'POST', body: JSON.stringify(b) });

@@ -66,8 +66,10 @@ export function createServer(deps: ServerDeps) {
         .get('/state', () => {
           const r = poller.last;
           if (!r) return { ok: false, error: 'no poll completed yet' };
+          const unmanaged = db.unmanagedBatchIds();
           const batches = r.batches.map((b) => ({
             ...b,
+            managed: !unmanaged.has(b.batchID),
             storedBytes: storedBytes(b.utilizationRatio, b.depth).toString(),
             capacityBytes: capacityBytes(b.depth).toString(),
             storedHuman: formatBytes(storedBytes(b.utilizationRatio, b.depth)),
@@ -102,18 +104,49 @@ export function createServer(deps: ServerDeps) {
         .get('/batches', () => json(db.batches()))
 
         /**
-         * Exclude a batch from management, or put it back. An unmanaged batch is
-         * never topped up or diluted and raises no low-TTL or expiry alert — for
-         * deliberately short-lived stamps where renewal would be the bug.
+         * Edit a batch: its label and/or whether it is managed.
+         *
+         * `label` is written through to Bee, because the label lives on the node
+         * and other tools discover batches by it. `managed` is local-only — an
+         * unmanaged batch is never topped up or diluted and raises no low-TTL or
+         * expiry alert, for short-lived stamps where renewal would be the bug.
+         *
+         * Deliberately NOT coupled: renaming a batch to the unmanaged prefix does
+         * not change whether it is managed. A rename silently altering spending
+         * behaviour is the kind of hidden coupling that surprises people later —
+         * the UI suggests it instead.
          */
-        .patch('/batches/:id/managed', ({ params, body, set }) => {
-          const managed = (body as any).managed;
-          if (!db.setManaged(params.id, managed)) {
+        .patch('/batches/:id', async ({ params, body, set }) => {
+          const { label, managed } = body as { label?: string; managed?: boolean };
+          if (label === undefined && managed === undefined) {
+            set.status = 400;
+            return { error: 'provide label, managed, or both' };
+          }
+          if (!db.batches().some((b) => b.batchId === params.id)) {
             set.status = 404;
             return { error: 'batch not seen yet — it is recorded on the first poll after it exists' };
           }
-          return json({ batchId: params.id, managed });
-        }, { body: t.Object({ managed: t.Boolean() }) })
+
+          // Bee first: if the node rejects the rename, the local row must not be
+          // updated, or the dashboard would show a name the node does not have.
+          if (label !== undefined) {
+            try {
+              await bee.setLabel(params.id, label);
+            } catch (e: any) {
+              set.status = 502;
+              return { error: `bee rejected the rename: ${e?.message ?? e}` };
+            }
+            db.setLabel(params.id, label);
+          }
+          if (managed !== undefined) db.setManaged(params.id, managed);
+
+          return json(db.batches().find((b) => b.batchId === params.id));
+        }, {
+          body: t.Object({
+            label: t.Optional(t.String({ minLength: 1, maxLength: 128 })),
+            managed: t.Optional(t.Boolean()),
+          }),
+        })
         .post('/poll', async () => json(await poller.tick()))
 
         // The slider surface: one quote per depth at the chosen duration.

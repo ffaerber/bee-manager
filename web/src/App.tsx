@@ -74,7 +74,7 @@ export default function App() {
       </div>
 
       <Overview state={state} />
-      <Batches state={state} />
+      <Batches state={state} onChange={load} />
       <Wizard state={state} onDone={load} />
       <Actions actions={actions} />
     </div>
@@ -120,7 +120,7 @@ function Tile({ label, value, sub }: { label: string; value: string; sub?: strin
   );
 }
 
-function Batches({ state }: { state: State }) {
+function Batches({ state, onChange }: { state: State; onChange: () => void }) {
   const threshold = state.config.topupWhenTtlBelowDays;
   return (
     <div className="card">
@@ -132,11 +132,11 @@ function Batches({ state }: { state: State }) {
             <thead>
               <tr>
                 <th>Label</th><th className="num">Depth</th><th>Remaining life</th>
-                <th>Used of capacity</th><th className="num">Stored</th><th>Flags</th>
+                <th>Used of capacity</th><th className="num">Stored</th><th>Managed</th><th>Flags</th>
               </tr>
             </thead>
             <tbody>
-              {state.batches.map((b) => <BatchRow key={b.batchID} b={b} threshold={threshold} />)}
+              {state.batches.map((b) => <BatchRow key={b.batchID} b={b} threshold={threshold} onChange={onChange} />)}
             </tbody>
           </table>
         </div>
@@ -154,14 +154,45 @@ function Batches({ state }: { state: State }) {
   );
 }
 
-function BatchRow({ b, threshold }: { b: Batch; threshold: number }) {
+function BatchRow({ b, threshold, onChange }: { b: Batch; threshold: number; onChange: () => void }) {
   const sev = ttlSeverity(b.ttlDays, threshold);
+  const [label, setLabel] = useState(b.label);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => { setLabel(b.label); }, [b.label]);
+
+  // The label lives on the Bee node, so a rename is a write to it — not just a
+  // local edit. Only send when it actually changed.
+  async function saveLabel() {
+    if (label === b.label || !label.trim()) { setLabel(b.label); return; }
+    setBusy(true); setErr(null);
+    try { await api.patchBatch(b.batchID, { label: label.trim() }); onChange(); }
+    catch (e: any) { setErr(e.message); setLabel(b.label); }
+    setBusy(false);
+  }
+
+  async function toggleManaged() {
+    setBusy(true); setErr(null);
+    try { await api.patchBatch(b.batchID, { managed: !b.managed }); onChange(); }
+    catch (e: any) { setErr(e.message); }
+    setBusy(false);
+  }
   // TTL bar is relative to a 90-day full scale, clamped.
   const ttlPct = Math.max(2, Math.min(100, (b.ttlDays / 90) * 100));
   const usePct = Math.max(0.5, Math.min(100, b.utilizationRatio * 100));
   return (
     <tr>
-      <td>{b.label || <span className="muted">(unlabelled)</span>}</td>
+      <td>
+        <input
+          type="text" value={label} disabled={busy}
+          onChange={(e) => setLabel(e.target.value)}
+          onBlur={saveLabel}
+          onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setLabel(b.label); }}
+          style={{ width: 150, padding: '4px 6px', fontSize: 13 }}
+          title="Renames the batch on the Bee node"
+        />
+        {err && <div className="warn err" style={{ marginTop: 4, fontSize: 12 }}>{err}</div>}
+      </td>
       <td className="num mono">{b.depth}</td>
       <td>
         <div className="row" style={{ gap: 8, flexWrap: 'nowrap' }}>
@@ -176,6 +207,14 @@ function BatchRow({ b, threshold }: { b: Batch; threshold: number }) {
         </div>
       </td>
       <td className="num mono">{b.storedHuman} <span className="muted">/ {b.capacityHuman}</span></td>
+      <td>
+        <button onClick={toggleManaged} disabled={busy} style={{ padding: '4px 10px', fontSize: 12 }}
+          title={b.managed
+            ? 'Topped up automatically. Click to leave it alone — it will expire on its own.'
+            : 'Never topped up; its expiry raises no alert. Click to manage it again.'}>
+          {b.managed ? 'managed' : 'unmanaged'}
+        </button>
+      </td>
       <td className="secondary" style={{ fontSize: 12 }}>
         {b.usable ? '' : 'unusable '}{b.immutableFlag ? 'immutable' : 'mutable'}
       </td>
