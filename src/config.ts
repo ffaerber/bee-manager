@@ -60,6 +60,9 @@ export interface Config {
   minWalletPlur: bigint;
   minWalletXdaiWei: bigint;
 
+  /** New batches whose label starts with this are auto-excluded from management. */
+  unmanagedLabelPrefix: string;
+
   webhookUrl: string | null;
   alertCooldownMs: number;
   walletLowRunwayDays: number;
@@ -88,6 +91,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       maxTopupPlurPerDay: plur('MAX_TOPUP_BZZ_PER_DAY', '25'),
       minWalletPlur: plur('MIN_WALLET_BZZ', '5'),
       minWalletXdaiWei: BigInt(Math.round(Number(str('MIN_WALLET_XDAI', '0.5')) * 1e18)),
+
+      // "share a file and forget it" stamps: label them tmp-* and the poller
+      // will never renew them or alert when they lapse.
+      unmanagedLabelPrefix: str('UNMANAGED_LABEL_PREFIX', 'tmp-'),
 
       webhookUrl: str('WEBHOOK_URL', '') || null,
       alertCooldownMs: int('ALERT_COOLDOWN_MS', 6 * 3_600_000, 0),

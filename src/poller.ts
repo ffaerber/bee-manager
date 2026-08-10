@@ -87,8 +87,14 @@ export class Poller {
     // Disappearance must be detected before recording the current batches,
     // otherwise a batch that vanished this tick is never compared.
     const known = this.db.liveKnownBatchIds();
+    const unmanaged = this.db.unmanagedBatchIds();
     for (const gone of findDisappeared(known, batches)) {
       if (this.db.markGone(gone, now)) {
+        // An unmanaged batch expiring is the intended outcome, not an incident.
+        if (unmanaged.has(gone)) {
+          console.log(`[poll] unmanaged batch ${gone.slice(0, 12)}… expired as intended`);
+          continue;
+        }
         await this.alerter.send({
           event: 'batch_disappeared', level: 'error', batchId: gone,
           message: `Batch ${gone.slice(0, 12)}… has expired and is gone from the node. ` +
@@ -97,10 +103,22 @@ export class Poller {
       }
     }
 
+    const knownSet = new Set(known);
     for (const b of batches) {
+      const isNew = !knownSet.has(b.batchID);
       this.db.seenBatch(b.batchID, b.label, b.depth, b.immutableFlag, now);
+      // Label convention, applied once when a batch first appears: creating a
+      // throwaway stamp should not require a second call to opt it out.
+      if (isNew && this.cfg.unmanagedLabelPrefix && b.label.startsWith(this.cfg.unmanagedLabelPrefix)) {
+        this.db.setManaged(b.batchID, false);
+        unmanaged.add(b.batchID);
+        console.log(`[poll] ${b.label} matches "${this.cfg.unmanagedLabelPrefix}" — left unmanaged`);
+      }
       this.db.recordSnapshot(b.batchID, b.batchTTL, b.amount, b.depth, b.utilizationRatio, chain.currentPrice, now);
     }
+
+    // Unmanaged batches are observed and charted, but never acted on.
+    const managedBatches = batches.filter((b) => !unmanaged.has(b.batchID));
 
     const burn = totalBurnPer30Days(batches, chain.currentPrice, this.msPerBlock);
     const runwayDays = runwaySeconds(wallet.bzzBalance, burn) / 86_400;
@@ -122,7 +140,7 @@ export class Poller {
       inFlight: this.db.inFlightBatchIds(),
       msPerBlock: this.msPerBlock,
     };
-    const plans = evaluateAll(batches, ctx);
+    const plans = evaluateAll(managedBatches, ctx);
     for (const plan of plans) await this.handle(plan, batches);
 
     this.last = {

@@ -62,7 +62,11 @@ export class Db {
         immutable   INTEGER NOT NULL DEFAULT 0,
         first_seen  INTEGER NOT NULL,
         last_seen   INTEGER NOT NULL,
-        gone_at     INTEGER
+        gone_at     INTEGER,
+        -- 0 = leave this batch alone entirely: no top-up, no dilution, and no
+        -- low-TTL or disappeared alerts. For deliberately short-lived stamps
+        -- ("share a file, let it expire") where renewal would be the bug.
+        managed     INTEGER NOT NULL DEFAULT 1
       );
       CREATE TABLE IF NOT EXISTS snapshots (
         id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -114,6 +118,14 @@ export class Db {
       CREATE INDEX IF NOT EXISTS idx_uploads_app_ts  ON uploads (app_name, ts DESC);
       CREATE INDEX IF NOT EXISTS idx_uploads_addr_ts ON uploads (address, ts DESC);
     `);
+
+    // SQLite has no ADD COLUMN IF NOT EXISTS, and a database created before
+    // `managed` existed will not have it. Add it once, defaulting to managed so
+    // upgrading never silently stops maintaining a batch someone relies on.
+    const cols = this.db.query(`PRAGMA table_info(batches)`).all() as any[];
+    if (!cols.some((c) => c.name === 'managed')) {
+      this.db.exec(`ALTER TABLE batches ADD COLUMN managed INTEGER NOT NULL DEFAULT 1`);
+    }
   }
 
   close() { this.db.close(); }
@@ -134,6 +146,35 @@ export class Db {
   liveKnownBatchIds(): string[] {
     return this.db.query(`SELECT batch_id FROM batches WHERE gone_at IS NULL`)
       .all().map((r: any) => r.batch_id);
+  }
+
+  /**
+   * Batches explicitly excluded from management. The poller neither tops these
+   * up nor alerts on them — an expiry is the intended outcome, not an incident.
+   */
+  unmanagedBatchIds(): Set<string> {
+    const rows = this.db.query(`SELECT batch_id FROM batches WHERE managed = 0`).all() as any[];
+    return new Set(rows.map((r) => r.batch_id));
+  }
+
+  isManaged(batchId: string): boolean {
+    const r = this.db.query(`SELECT managed FROM batches WHERE batch_id = ?`).get(batchId) as any;
+    return r ? r.managed === 1 : true; // unknown batches default to managed
+  }
+
+  /** Returns false if the batch is not known yet. */
+  setManaged(batchId: string, managed: boolean): boolean {
+    const res = this.db.query(`UPDATE batches SET managed = ? WHERE batch_id = ?`)
+      .run(managed ? 1 : 0, batchId);
+    return res.changes > 0;
+  }
+
+  batches(): { batchId: string; label: string; depth: number; managed: boolean; goneAt: number | null }[] {
+    return this.db.query(`SELECT batch_id, label, depth, managed, gone_at FROM batches ORDER BY label`)
+      .all().map((r: any) => ({
+        batchId: r.batch_id, label: r.label, depth: r.depth,
+        managed: r.managed === 1, goneAt: r.gone_at,
+      }));
   }
 
   /** Mark a batch as vanished. Returns false if it was already marked. */

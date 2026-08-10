@@ -99,6 +99,21 @@ export function createServer(deps: ServerDeps) {
 
         .get('/actions', ({ query }) => json(db.recentActions(Number(query.limit ?? 100))))
         .get('/apps', () => json(db.apps()))
+        .get('/batches', () => json(db.batches()))
+
+        /**
+         * Exclude a batch from management, or put it back. An unmanaged batch is
+         * never topped up or diluted and raises no low-TTL or expiry alert — for
+         * deliberately short-lived stamps where renewal would be the bug.
+         */
+        .patch('/batches/:id/managed', ({ params, body, set }) => {
+          const managed = (body as any).managed;
+          if (!db.setManaged(params.id, managed)) {
+            set.status = 404;
+            return { error: 'batch not seen yet — it is recorded on the first poll after it exists' };
+          }
+          return json({ batchId: params.id, managed });
+        }, { body: t.Object({ managed: t.Boolean() }) })
         .post('/poll', async () => json(await poller.tick()))
 
         // The slider surface: one quote per depth at the chosen duration.

@@ -153,3 +153,44 @@ describe('alert dedup', () => {
     expect(db.shouldAlert('b', 3_600_000)).toBe(true);
   });
 });
+
+describe('unmanaged batches', () => {
+  it('treats every batch as managed by default', () => {
+    db.seenBatch('a', 'site', 17, false);
+    expect(db.isManaged('a')).toBe(true);
+    expect(db.unmanagedBatchIds().size).toBe(0);
+  });
+
+  it('excludes a batch from management and back again', () => {
+    db.seenBatch('a', 'tmp-share', 17, false);
+    expect(db.setManaged('a', false)).toBe(true);
+    expect(db.isManaged('a')).toBe(false);
+    expect(db.unmanagedBatchIds().has('a')).toBe(true);
+    db.setManaged('a', true);
+    expect(db.isManaged('a')).toBe(true);
+  });
+
+  it('reports a batch it has never seen rather than silently succeeding', () => {
+    expect(db.setManaged('nope', false)).toBe(false);
+  });
+
+  it('defaults an unknown batch to managed — never silently stop maintaining one', () => {
+    expect(db.isManaged('never-seen')).toBe(true);
+  });
+
+  it('keeps the flag across a re-sighting, so a poll does not undo the opt-out', () => {
+    db.seenBatch('a', 'tmp-share', 17, false);
+    db.setManaged('a', false);
+    db.seenBatch('a', 'tmp-share', 17, false); // next poll
+    expect(db.isManaged('a')).toBe(false);
+  });
+
+  it('lists batches with their managed state', () => {
+    db.seenBatch('a', 'site', 17, false);
+    db.seenBatch('b', 'tmp-share', 17, false);
+    db.setManaged('b', false);
+    const rows = db.batches();
+    expect(rows.find((r) => r.batchId === 'a')!.managed).toBe(true);
+    expect(rows.find((r) => r.batchId === 'b')!.managed).toBe(false);
+  });
+});

@@ -95,6 +95,27 @@ curl -X POST "https://stamps.example.org/api/apps/mysite/upload" \
 Point an ENS content hash at that reference and the site is live. This is the
 path that lets the Bee node itself stay off the internet.
 
+## Fire-and-forget stamps
+
+The poller renews every batch it sees, which is wrong for a deliberately
+short-lived one — share a file with friends, let it lapse. Two ways to opt out:
+
+```sh
+# by label, applied automatically the first time the batch is seen
+POST /api/admin/wizard/buy  {"depth":17,"days":3,"label":"tmp-holiday-pics","confirm":true}
+
+# or explicitly, at any time
+PATCH /api/admin/batches/<id>/managed  {"managed": false}
+```
+
+An unmanaged batch is never topped up or diluted, and raises no low-TTL or
+"disappeared" alert — its expiry is the intended outcome, not an incident. It
+still appears in the dashboard and in snapshots while it lives.
+
+The label prefix is `UNMANAGED_LABEL_PREFIX` (default `tmp-`). Unknown batches
+always default to *managed*, so an upgrade or a lost database can never silently
+stop maintaining something you rely on.
+
 ## Running
 
 ```sh
