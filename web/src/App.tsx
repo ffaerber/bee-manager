@@ -114,7 +114,6 @@ export default function App() {
 
       <Overview state={state} />
       <Batches state={state} onChange={load} />
-      <Wizard state={state} onDone={load} />
       <Actions actions={actions} />
     </div>
   );
@@ -220,9 +219,15 @@ function Batches({ state, onChange }: { state: State; onChange: () => void }) {
   // one batch, not to tile five. The label comes from the row rather than the
   // fetch so the modal has a title before the data lands.
   const [mapFor, setMapFor] = useState<{ id: string; label: string } | null>(null);
+  // Buying lives here rather than in its own panel: a new batch is a row in
+  // this table, so the action belongs next to the thing it changes.
+  const [creating, setCreating] = useState(false);
   return (
     <div className="card">
-      <h2 style={{ marginBottom: 12 }}>Batches</h2>
+      <div className="spread" style={{ marginBottom: 12 }}>
+        <h2>Batches</h2>
+        <button className="primary" onClick={() => setCreating(true)}>Create batch</button>
+      </div>
       {state.batches.length === 0 && <p className="muted">No batches on the node.</p>}
       {state.batches.length > 0 && (
         <div className="scroll-x">
@@ -247,6 +252,14 @@ function Batches({ state, onChange }: { state: State; onChange: () => void }) {
         <Modal title={`Bucket map — ${mapFor.label || mapFor.id.slice(0, 12) + '…'}`}
           onClose={() => setMapFor(null)}>
           <BucketMap batchId={mapFor.id} />
+        </Modal>
+      )}
+      {/* Deliberately not closed by onChange: after a purchase the wizard shows
+          which batch it bought and what it cost, and that is the receipt. The
+          table behind refreshes; the user closes when they have read it. */}
+      {creating && (
+        <Modal title="Create batch" onClose={() => setCreating(false)}>
+          <Wizard state={state} onDone={onChange} />
         </Modal>
       )}
       <Plans plans={state.plans} batches={state.batches} />
@@ -439,9 +452,7 @@ function Wizard({ state, onDone }: { state: State; onDone: () => void }) {
   }
 
   return (
-    <div className="card">
-      <h2 style={{ marginBottom: 12 }}>Stamp wizard</h2>
-
+    <div>
       <div className="row" style={{ gap: 24, alignItems: 'flex-start' }}>
         <div style={{ flex: '1 1 220px' }}>
           <label className="field" htmlFor="depth">
