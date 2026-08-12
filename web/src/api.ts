@@ -27,7 +27,7 @@ export interface State {
   wallet?: { bzz: number; xdai: number; address: string };
   chain?: { block: number; price: string };
   batches: Batch[];
-  plans: { kind: string; reason: string }[];
+  plans: { kind: 'none' | 'topup' | 'dilute' | 'blocked'; batchId: string; reason: string }[];
   config: { autoTopupEnabled: boolean; dryRun: boolean; topupWhenTtlBelowDays: number; topupTargetTtlDays: number };
 }
 export interface Quote {

@@ -177,14 +177,42 @@ function Batches({ state, onChange }: { state: State; onChange: () => void }) {
           </table>
         </div>
       )}
-      {state.plans.length > 0 && (
-        <div style={{ marginTop: 12 }}>
-          {state.plans.map((p, i) => (
-            <div key={i} className={p.kind === 'blocked' ? 'warn err' : p.kind === 'none' ? '' : 'warn'}>
-              <span className="muted">{p.kind}</span> — {p.reason}
-            </div>
-          ))}
+      <Plans plans={state.plans} batches={state.batches} />
+    </div>
+  );
+}
+
+/**
+ * What the planner intends to do on the next cycle.
+ *
+ * `none` is by far the commonest verdict and means "nothing to do", so listing
+ * one line per batch spends the most prominent space under the table restating
+ * that everything is fine — and the raw kind (`none`) is an internal enum that
+ * reads like a failure. The all-clear collapses to a single sentence; only
+ * batches actually needing something get their own line.
+ */
+function Plans({ plans, batches }: { plans: State['plans']; batches: Batch[] }) {
+  if (plans.length === 0) return null;
+  const nameOf = (batchId: string) =>
+    batches.find((b) => b.batchID === batchId)?.label || `${batchId.slice(0, 8)}…`;
+
+  const actionable = plans.filter((p) => p.kind !== 'none');
+  const quiet = plans.length - actionable.length;
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      {actionable.map((p, i) => (
+        <div key={i} className={p.kind === 'blocked' ? 'warn err' : 'warn'}>
+          <strong>{nameOf(p.batchId)}</strong>{' '}
+          {p.kind === 'blocked' ? 'needs a top-up but is blocked' :
+           p.kind === 'dilute' ? 'will be diluted, then topped up' :
+           'will be topped up'} — {p.reason}
         </div>
+      ))}
+      {quiet > 0 && (
+        <p className="muted" style={{ fontSize: 13, margin: actionable.length ? '8px 0 0' : 0 }}>
+          No action needed for {quiet} managed batch{quiet === 1 ? '' : 'es'} — all above the top-up threshold.
+        </p>
       )}
     </div>
   );
