@@ -358,14 +358,36 @@ function Wizard({ state, onDone }: { state: State; onDone: () => void }) {
   );
   const max = Math.max(...window.map((q) => q.costBzz), 0.0001);
 
-  async function doBuy(confirm: boolean) {
+  /**
+   * Buying is a two-click action, and the first click is a real guard rather
+   * than a formality: it pins the exact depth/duration/cost being committed to,
+   * so what you confirm is what you saw. Any slider move disarms it (see the
+   * effect below), because otherwise a nudge between the two clicks would spend
+   * against numbers you never read.
+   *
+   * There is no separate "price it" step — the Cost tiles above are already a
+   * live quote from the same `quote()` the server prices with, so a button that
+   * fetched it again would only restate what is on screen.
+   */
+  const [arm, setArm] = useState<{ depth: number; days: number; costBzz: number } | null>(null);
+
+  // Changing the purchase invalidates any pending confirmation.
+  useEffect(() => { setArm(null); }, [depth, days]);
+
+  async function doBuy() {
+    if (!selected) return;
+    if (!arm) {
+      setArm({ depth, days, costBzz: selected.costBzz });
+      setResult(null);
+      return;
+    }
     setBusy(true); setResult(null);
     try {
-      const r = await api.buy({ depth, days, label: label || undefined, confirm });
-      if (r.confirmRequired) setResult(`Priced at ${r.preview.costBzz.toFixed(3)} BZZ — press Buy again to commit.`);
-      else if (r.dryRun) setResult(`DRY_RUN is on — would have bought depth ${depth} for ${r.wouldBuy.costBzz.toFixed(3)} BZZ.`);
+      const r = await api.buy({ depth, days, label: label || undefined, confirm: true });
+      if (r.dryRun) setResult(`DRY_RUN is on — would have bought depth ${depth} for ${r.wouldBuy.costBzz.toFixed(3)} BZZ.`);
       else { setResult(`Bought batch ${r.batchId.slice(0, 16)}… for ${r.cost.costBzz.toFixed(3)} BZZ.`); onDone(); }
     } catch (e: any) { setResult(`Failed: ${e.message}`); }
+    setArm(null);
     setBusy(false);
   }
 
@@ -437,13 +459,20 @@ function Wizard({ state, onDone }: { state: State; onDone: () => void }) {
       <div className="row" style={{ marginTop: 20 }}>
         <input type="text" placeholder="label (e.g. pinkchainsaw)" value={label}
           onChange={(e) => setLabel(e.target.value)} />
-        <button className="primary" disabled={busy || !selected?.affordable} onClick={() => doBuy(false)}>
-          Price it
+        <button className={arm ? '' : 'primary'} disabled={busy || !selected?.affordable} onClick={doBuy}>
+          {busy ? 'Buying…' : arm ? `Confirm — spend ${arm.costBzz.toFixed(3)} BZZ` : 'Buy batch'}
         </button>
-        <button disabled={busy || !selected?.affordable} onClick={() => doBuy(true)}>
-          Buy batch
-        </button>
+        {arm && <button onClick={() => setArm(null)} disabled={busy}>Cancel</button>}
       </div>
+      {arm && !busy && (
+        <div className="warn">
+          Buying <strong>depth {arm.depth}</strong> ({selected?.capacityHuman}) for <strong>{arm.days} days</strong>
+          {' '}at <strong>{arm.costBzz.toFixed(3)} BZZ</strong>
+          {state.fiat && ` (≈ $${(arm.costBzz * state.fiat.usd).toFixed(2)})`}
+          {label ? <> · label <strong>{label}</strong></> : ' · no label'}.
+          {' '}Depth and immutability cannot be changed after purchase. Click confirm to spend.
+        </div>
+      )}
       {result && <div className={`warn ${result.startsWith('Failed') ? 'err' : ''}`}>{result}</div>}
     </div>
   );
