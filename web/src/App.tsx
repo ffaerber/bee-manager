@@ -83,6 +83,11 @@ export default function App() {
           <span className={`status ${state.ok ? 'good' : 'critical'}`}>
             {state.ok ? 'node reachable' : 'node unreachable'}
           </span>
+          {armed && (
+            <span className="status good" title="Batches below the TTL threshold are topped up automatically, within the configured spend caps.">
+              auto top-up on
+            </span>
+          )}
           <button onClick={async () => { setBusy(true); await api.poll().catch(() => {}); await load(); setBusy(false); }}
             disabled={busy}>{busy ? 'Polling…' : 'Poll now'}</button>
           <button onClick={() => { api.setToken(''); setTok(''); setState(null); setErr('admin token required'); }}
@@ -90,11 +95,19 @@ export default function App() {
         </div>
       </div>
 
-      <div className={`banner ${armed ? 'armed' : 'safe'}`}>
-        {armed
-          ? 'Auto top-up is ARMED — this service will spend BZZ without confirmation.'
-          : `Auto top-up inactive (${!state.config.autoTopupEnabled ? 'AUTO_TOPUP_ENABLED=false' : 'DRY_RUN=true'}) — planning only, nothing is spent.`}
-      </div>
+      {/* Armed is the intended steady state, so it gets no banner — only the
+          quiet chip in the header. A permanent warning on normal operation
+          just teaches you to ignore banners, and then the one that matters
+          gets ignored too. Disarmed is the exceptional state and the one
+          worth interrupting for: it is precisely the condition in which a
+          batch expires unnoticed, which is what this service exists to
+          prevent. */}
+      {!armed && (
+        <div className="banner warn">
+          Auto top-up is OFF ({!state.config.autoTopupEnabled ? 'AUTO_TOPUP_ENABLED=false' : 'DRY_RUN=true'})
+          {' '}— batches are still monitored, but nothing is topped up. Stamps can expire.
+        </div>
+      )}
 
       <Overview state={state} />
       <Batches state={state} onChange={load} />

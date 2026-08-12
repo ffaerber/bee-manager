@@ -152,5 +152,9 @@ input[type='text'], input[type='number'] {
   padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; font-size: 13px;
   border: 1px solid var(--border);
 }
-.banner.armed { border-left: 3px solid var(--critical); }
-.banner.safe { border-left: 3px solid var(--good); }
+/* Only one banner state remains: auto top-up disabled. The armed state is
+   normal operation and shows a header chip instead. */
+.banner.warn {
+  border-left: 3px solid var(--warning);
+  background: color-mix(in srgb, var(--warning) 8%, transparent);
+}
