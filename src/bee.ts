@@ -102,12 +102,23 @@ export class BeeClient {
      * giving up while the money is already moving.
      */
     private readonly writeTimeoutMs = 300_000,
+    /**
+     * Uploads are data transfers, not chain operations, and they routinely
+     * outlast a read. They were sharing the 15s read timeout, which aborted
+     * any file slow enough to take longer — a size-independent failure that
+     * looked like "large uploads do not work".
+     */
+    private readonly uploadTimeoutMs = 300_000,
   ) {
     this.baseUrl = baseUrl.replace(/\/+$/, '');
   }
 
-  private async request(path: string, init?: RequestInit, opts: { write?: boolean; operation?: string } = {}): Promise<any> {
-    const timeout = opts.write ? this.writeTimeoutMs : this.timeoutMs;
+  private async request(
+    path: string,
+    init?: RequestInit,
+    opts: { write?: boolean; upload?: boolean; operation?: string } = {},
+  ): Promise<any> {
+    const timeout = opts.write ? this.writeTimeoutMs : opts.upload ? this.uploadTimeoutMs : this.timeoutMs;
     let res: Response;
     try {
       res = await fetch(`${this.baseUrl}${path}`, { ...init, signal: AbortSignal.timeout(timeout) });
@@ -273,7 +284,8 @@ export class BeeClient {
       if (opts.errorDocument) headers['Swarm-Error-Document'] = opts.errorDocument;
     }
     const qs = opts.name ? `?name=${encodeURIComponent(opts.name)}` : '';
-    const d = await this.request(`/bzz${qs}`, { method: 'POST', headers, body: body as any });
+    const d = await this.request(`/bzz${qs}`, { method: 'POST', headers, body: body as any },
+      { upload: true, operation: `upload(${body.byteLength} bytes)` });
     return d.reference;
   }
 
@@ -304,7 +316,7 @@ export class BeeClient {
       method: 'POST',
       headers: { 'Swarm-Postage-Batch-Id': batchId, 'Content-Type': contentType },
       body: body as any,
-    });
+    }, { upload: true, operation: `uploadBytes(${body.byteLength} bytes)` });
     return d.reference;
   }
 

@@ -45,6 +45,8 @@ export interface Config {
   beeTimeoutMs: number;
   /** Writes are on-chain transactions; a short timeout only means giving up mid-spend. */
   beeWriteTimeoutMs: number;
+  beeUploadTimeoutMs: number;
+  maxUploadBytes: number;
   pollIntervalMs: number;
   dbPath: string;
   port: number;
@@ -78,6 +80,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       beeUrl: str('BEE_URL', 'http://bee:1633'),
       beeTimeoutMs: int('BEE_TIMEOUT_MS', 15_000, 1_000),
       beeWriteTimeoutMs: int('BEE_WRITE_TIMEOUT_MS', 300_000, 10_000),
+      beeUploadTimeoutMs: int('BEE_UPLOAD_TIMEOUT_MS', 300_000, 10_000),
+      /**
+       * Ceiling on a dashboard upload.
+       *
+       * Bounded by memory, not policy: the request body is buffered whole
+       * before being handed to Bee, and the container is limited to 512 MB.
+       * 32 MB leaves ample headroom for the buffer, Bee's own copy and the
+       * 65,536-bucket reads happening alongside it. Raise it only together
+       * with the container's memory limit.
+       */
+      maxUploadBytes: int('MAX_UPLOAD_BYTES', 32 * 1024 * 1024, 4096),
       pollIntervalMs: int('POLL_INTERVAL_MS', 300_000, 10_000),
       dbPath: str('DB_PATH', './data/monitor.sqlite'),
       port: int('PORT', 3000, 1),

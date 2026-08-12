@@ -70,6 +70,11 @@ export function BatchDetail({ batchId, state }: { batchId: string; state: State 
    * 100 chunks for a 326 KB image where the naive figure is 80.
    */
   async function onFile(file: File) {
+    // Refuse locally first. Without this a large file is transferred in full
+    // before the server can answer 413 — minutes of upload to be told no.
+    const reason = data ? rejectReason(file, data) : null;
+    if (reason) { setErr(reason); if (filePick.current) filePick.current.value = ''; return; }
+
     setUploading(true); setErr(null); setUploaded(null);
     const before = data?.totalChunks ?? 0;
     try {
@@ -155,7 +160,9 @@ export function BatchDetail({ batchId, state }: { batchId: string; state: State 
                   {uploading ? 'Uploading…' : 'Upload a file'}
                 </button>
                 <span className="muted" style={{ fontSize: 12 }}>
-                  Stamps it with this batch — watch the background fill.
+                  Stamps it with this batch — watch the background fill. Up to{' '}
+                  {fmtBytes(data.maxUploadBytes)}, and {fmtBytes(data.freeChunks * 4096)} of batch
+                  space is unused.
                 </span>
               </div>
               {/* Both are irreversible and neither is obvious from a file
@@ -289,6 +296,29 @@ function UploadRow({ u }: { u: Upload }) {
       </td>
     </tr>
   );
+}
+
+/**
+ * Why a file cannot be uploaded, or null if it can.
+ *
+ * Checked in the browser so the answer arrives before the transfer rather
+ * than after it. The server re-checks regardless — this is a courtesy, not
+ * the enforcement.
+ */
+function rejectReason(file: File, data: BucketGrid): string | null {
+  if (file.size === 0) return 'That file is empty.';
+  if (file.size > data.maxUploadBytes) {
+    return `${file.name} is ${fmtBytes(file.size)}, over the ${fmtBytes(data.maxUploadBytes)} limit. ` +
+      'The whole file is held in memory while it is stamped, so the ceiling is the service\'s memory, not a policy.';
+  }
+  // Chunk cost exceeds bytes/4096 — Swarm adds Merkle-tree and manifest chunks
+  // above the data — so compare generously rather than exactly.
+  const needChunks = Math.ceil(file.size / 4096);
+  if (needChunks > data.freeChunks) {
+    return `${file.name} needs about ${needChunks.toLocaleString()} chunks but only ` +
+      `${data.freeChunks.toLocaleString()} slots remain in this batch. Buy a deeper batch, or dilute this one.`;
+  }
+  return null;
 }
 
 function Key({ color, label }: { color: string; label: string }) {

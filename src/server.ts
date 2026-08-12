@@ -42,15 +42,6 @@ export interface ServerDeps {
   price?: PriceFeed;
 }
 
-/**
- * Ceiling on a dashboard upload.
- *
- * Not a quota — the admin is trusted — just a guard so a mis-picked file
- * cannot buffer something enormous into memory, and a reminder that each
- * upload permanently consumes batch capacity.
- */
-const MAX_ADMIN_UPLOAD_BYTES = 32 * 1024 * 1024;
-
 /** bigint is not JSON-serialisable; render as string to preserve exactness. */
 const json = (v: unknown) => JSON.parse(JSON.stringify(v, (_k, x) => (typeof x === 'bigint' ? x.toString() : x)));
 
@@ -200,9 +191,9 @@ export function createServer(deps: ServerDeps) {
 
           const bytes = new Uint8Array(await request.arrayBuffer());
           if (bytes.byteLength === 0) { set.status = 400; return { error: 'empty body' }; }
-          if (bytes.byteLength > MAX_ADMIN_UPLOAD_BYTES) {
+          if (bytes.byteLength > cfg.maxUploadBytes) {
             set.status = 413;
-            return { error: `upload is ${formatBytes(BigInt(bytes.byteLength))}, over the ${formatBytes(BigInt(MAX_ADMIN_UPLOAD_BYTES))} limit` };
+            return { error: `upload is ${formatBytes(BigInt(bytes.byteLength))}, over the ${formatBytes(BigInt(cfg.maxUploadBytes))} limit` };
           }
 
           const name = typeof query.name === 'string' ? query.name : undefined;
@@ -273,6 +264,19 @@ export function createServer(deps: ServerDeps) {
               label: b?.label ?? '',
               immutable: b?.immutableFlag ?? false,
               pressure: bucketPressure(grid, b?.immutableFlag ?? false),
+              /**
+               * Sent so the browser can refuse an oversized file before
+               * transferring it. Served rather than hardcoded client-side, so
+               * the two cannot disagree after a config change.
+               */
+              maxUploadBytes: cfg.maxUploadBytes,
+              /**
+               * Chunk slots still free across the whole batch. An upper bound:
+               * a chunk can only go in the bucket its address selects, so the
+               * last slots are unreachable in practice — which is what the
+               * fullest-bucket figure is for.
+               */
+              freeChunks: Math.max(0, Math.pow(2, grid.depth) - grid.totalChunks),
             });
           } catch (e: any) {
             set.status = e?.status === 404 ? 404 : 502;

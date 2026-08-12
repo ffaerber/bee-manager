@@ -64,6 +64,10 @@ export interface BucketGrid {
   depth: number; bucketDepth: number; bucketUpperBound: number; side: number;
   totalChunks: number; usedBuckets: number; emptyBuckets: number; fullBuckets: number;
   maxCollisions: number; storedBytes: number; capacityBytes: number;
+  /** Server's upload ceiling, so the browser can refuse before transferring. */
+  maxUploadBytes: number;
+  /** Chunk slots free batch-wide — an upper bound; buckets bind tighter. */
+  freeChunks: number;
   /** base64, one byte per bucket, fill scaled 0-255. */
   grid: string;
   label: string; immutable: boolean;

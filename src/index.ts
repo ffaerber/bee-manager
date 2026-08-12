@@ -17,7 +17,7 @@ import { readFileSync } from 'node:fs';
 
 const cfg = loadConfig();
 const db = new Db(cfg.dbPath);
-const bee = new BeeClient(cfg.beeUrl, cfg.beeTimeoutMs, cfg.beeWriteTimeoutMs);
+const bee = new BeeClient(cfg.beeUrl, cfg.beeTimeoutMs, cfg.beeWriteTimeoutMs, cfg.beeUploadTimeoutMs);
 const alerter = new Alerter(db, cfg.webhookUrl, cfg.alertCooldownMs);
 const poller = new Poller(cfg, bee, db, alerter);
 /**
