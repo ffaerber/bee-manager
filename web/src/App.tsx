@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import { TOKEN } from './api';
+import { BucketMap } from './BucketMap';
 import type { Batch, Ladder, Quote, State, Action } from './api';
 
 const DAY = 86_400;
@@ -214,6 +215,9 @@ function Tile({ label, value, unit, sub, fiat }: {
 
 function Batches({ state, onChange }: { state: State; onChange: () => void }) {
   const threshold = state.config.topupWhenTtlBelowDays;
+  // At most one map open: they are 65,536 cells each and the point is to study
+  // one batch, not to tile five.
+  const [mapFor, setMapFor] = useState<string | null>(null);
   return (
     <div className="card">
       <h2 style={{ marginBottom: 12 }}>Batches</h2>
@@ -224,15 +228,20 @@ function Batches({ state, onChange }: { state: State; onChange: () => void }) {
             <thead>
               <tr>
                 <th>Label</th><th className="num">Depth</th><th>Remaining life</th>
-                <th>Used of capacity</th><th className="num">Stored</th><th>Managed</th><th>Flags</th>
+                <th>Used of capacity</th><th className="num">Stored</th><th>Managed</th><th>Flags</th><th></th>
               </tr>
             </thead>
             <tbody>
-              {state.batches.map((b) => <BatchRow key={b.batchID} b={b} threshold={threshold} onChange={onChange} />)}
+              {state.batches.map((b) => (
+                <BatchRow key={b.batchID} b={b} threshold={threshold} onChange={onChange}
+                  mapOpen={mapFor === b.batchID}
+                  onToggleMap={() => setMapFor(mapFor === b.batchID ? null : b.batchID)} />
+              ))}
             </tbody>
           </table>
         </div>
       )}
+      {mapFor && <BucketMap batchId={mapFor} onClose={() => setMapFor(null)} />}
       <Plans plans={state.plans} batches={state.batches} />
     </div>
   );
@@ -274,7 +283,9 @@ function Plans({ plans, batches }: { plans: State['plans']; batches: Batch[] }) 
   );
 }
 
-function BatchRow({ b, threshold, onChange }: { b: Batch; threshold: number; onChange: () => void }) {
+function BatchRow({ b, threshold, onChange, mapOpen, onToggleMap }: {
+  b: Batch; threshold: number; onChange: () => void; mapOpen: boolean; onToggleMap: () => void;
+}) {
   const sev = ttlSeverity(b.ttlDays, threshold);
   const [label, setLabel] = useState(b.label);
   const [busy, setBusy] = useState(false);
@@ -326,7 +337,12 @@ function BatchRow({ b, threshold, onChange }: { b: Batch; threshold: number; onC
           <span className="mono secondary" style={{ minWidth: 46 }}>{(b.utilizationRatio * 100).toFixed(2)}%</span>
         </div>
       </td>
-      <td className="num mono">{b.storedHuman} <span className="muted">/ {b.capacityHuman}</span></td>
+      {/* utilizationRatio is quantised off the fullest bucket, so this is an
+          upper bound and can overstate by orders of magnitude — 268 MB shown
+          for a batch holding 0.47 MB. The bucket map reports the exact count. */}
+      <td className="num mono" title="Upper bound from utilizationRatio. Open the bucket map for the exact figure.">
+        ≤ {b.storedHuman} <span className="muted">/ {b.capacityHuman}</span>
+      </td>
       <td>
         <button onClick={toggleManaged} disabled={busy} style={{ padding: '4px 10px', fontSize: 12 }}
           title={b.managed
@@ -337,6 +353,12 @@ function BatchRow({ b, threshold, onChange }: { b: Batch; threshold: number; onC
       </td>
       <td className="secondary" style={{ fontSize: 12 }}>
         {b.usable ? '' : 'unusable '}{b.immutableFlag ? 'immutable' : 'mutable'}
+      </td>
+      <td>
+        <button onClick={onToggleMap} style={{ padding: '4px 10px', fontSize: 12 }}
+          title="Show how this batch's 65,536 buckets are filled, and the exact stored size">
+          {mapOpen ? 'hide map' : 'map'}
+        </button>
       </td>
     </tr>
   );

@@ -29,6 +29,7 @@ import { plurToBzz, bzzToPlur, storedBytes, capacityBytes, costPlur } from './ma
 import { checkCaps } from './evaluate';
 import type { Config } from './config';
 import { PriceFeed } from './price';
+import { buildGrid, bucketPressure } from './buckets';
 
 export interface ServerDeps {
   cfg: Config;
@@ -172,6 +173,29 @@ export function createServer(deps: ServerDeps) {
         })
 
         .get('/batches', () => json(db.batches()))
+
+        /**
+         * Per-bucket occupancy for one batch — the data behind the grid.
+         *
+         * Fetched on demand rather than in the poll loop: it is 65,536 entries
+         * per batch and only matters when someone is looking at it. The poller
+         * stays cheap and this stays exact.
+         */
+        .get('/batches/:id/buckets', async ({ params, set }) => {
+          const b = poller.last?.batches.find((x) => x.batchID === params.id);
+          try {
+            const grid = buildGrid(await bee.buckets(params.id));
+            return json({
+              ...grid,
+              label: b?.label ?? '',
+              immutable: b?.immutableFlag ?? false,
+              pressure: bucketPressure(grid, b?.immutableFlag ?? false),
+            });
+          } catch (e: any) {
+            set.status = e?.status === 404 ? 404 : 502;
+            return { error: e?.message ?? String(e) };
+          }
+        })
 
         /**
          * Edit a batch: its label and/or whether it is managed.

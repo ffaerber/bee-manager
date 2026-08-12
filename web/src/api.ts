@@ -59,6 +59,18 @@ export interface Action {
   cost: string; status: string; reason: string; error: string | null;
 }
 
+/** Per-bucket occupancy for one batch. Fetched on demand — it is 65,536 entries. */
+export interface BucketGrid {
+  depth: number; bucketDepth: number; bucketUpperBound: number; side: number;
+  totalChunks: number; usedBuckets: number; emptyBuckets: number; fullBuckets: number;
+  maxCollisions: number; storedBytes: number; capacityBytes: number;
+  /** base64, one byte per bucket, fill scaled 0-255. */
+  grid: string;
+  label: string; immutable: boolean;
+  pressure: { level: 'good' | 'warning' | 'critical'; message: string };
+}
+
+export const getBuckets = (id: string) => req<BucketGrid>(`/batches/${id}/buckets`);
 export const getState = () => req<State>('/state');
 export const getActions = () => req<Action[]>('/actions?limit=25');
 export const getLadder = (days: number, storedBytes?: string) =>

@@ -22,6 +22,15 @@ export interface Batch {
   batchTTL: number;
 }
 
+/** Occupancy of every bucket in a batch. `buckets[i]` is the stamp count in bucket i. */
+export interface BucketReport {
+  depth: number;
+  bucketDepth: number;
+  /** Capacity of ONE bucket: 2^(depth - bucketDepth). */
+  bucketUpperBound: number;
+  buckets: number[];
+}
+
 export interface ChainState {
   chainTip: number;
   block: number;
@@ -125,6 +134,30 @@ export class BeeClient {
 
   async stamp(batchId: string): Promise<Batch> {
     return toBatch(await this.request(`/stamps/${batchId}`));
+  }
+
+  /**
+   * Per-bucket occupancy for a batch — the exact shape of what is stored.
+   *
+   * A batch is split into 2^bucketDepth (65,536) buckets, and the leading bits
+   * of a chunk's address decide which bucket its stamp must go in. You cannot
+   * choose; the content's hash chooses for you. Each bucket holds
+   * 2^(depth-bucketDepth) stamps, reported as `bucketUpperBound`.
+   *
+   * This is the only endpoint that reports what is *actually* stored.
+   * `utilizationRatio` on /stamps is a coarse upper bound derived from the
+   * fullest bucket — on the live node it reported 268 MB for a batch holding
+   * 115 chunks (0.47 MB), a 570x overstatement. Anything claiming to show real
+   * usage has to come from here.
+   */
+  async buckets(batchId: string): Promise<BucketReport> {
+    const d = await this.request(`/stamps/${batchId}/buckets`);
+    return {
+      depth: d.depth,
+      bucketDepth: d.bucketDepth,
+      bucketUpperBound: d.bucketUpperBound,
+      buckets: (d.buckets ?? []).map((b: any) => b.collisions as number),
+    };
   }
 
   async chainstate(): Promise<ChainState> {

@@ -91,6 +91,18 @@ h2 { font-size: 14px; color: var(--text-secondary); letter-spacing: 0.02em; }
 /* Inline with the value, but recessive — the number is the fact, the ticker
    only qualifies it. Mirrors .hero-unit at tile scale. */
 .tile-unit { font-size: 13px; font-weight: 400; color: var(--text-secondary); margin-left: 5px; }
+
+/* Hover readout for the bucket map. Positioned against the canvas wrapper and
+   never intercepting the pointer, or it would fight the mousemove it exists to
+   report on. */
+.tooltip {
+  position: absolute; pointer-events: none; z-index: 5;
+  background: var(--surface-1); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 6px 8px; font-size: 12px; line-height: 1.4;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.18);
+}
 .tile-sub { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
 
 table { width: 100%; border-collapse: collapse; }
