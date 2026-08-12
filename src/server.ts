@@ -472,6 +472,13 @@ export function createServer(deps: ServerDeps) {
     });
     app.get('/', index);
     app.get('/index.html', index);
+    /**
+     * Client-side route for a single batch. Declared explicitly rather than as
+     * a catch-all SPA fallback: everything not matched here falls through to
+     * the Bee passthrough, and a broad fallback would shadow node endpoints
+     * the façade is supposed to forward.
+     */
+    app.get('/batch/:id', index);
     app.get('/assets/*', ({ params, set }: any) => {
       const file = Bun.file(`${webDist}/assets/${params['*']}`);
       set.status = 200;

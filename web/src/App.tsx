@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import { TOKEN } from './api';
-import { BucketMap } from './BucketMap';
-import { AmbientMap } from './AmbientMap';
+import { BatchDetail } from './BatchDetail';
+import { batchIdFrom, link, usePath } from './router';
 import { Modal } from './Modal';
 import type { Batch, Ladder, Quote, State, Action } from './api';
 
@@ -21,39 +21,13 @@ function fmtDays(d: number) {
   return `${d.toFixed(d < 10 ? 1 : 0)} d`;
 }
 
-const AMBIENT_KEY = 'ssm.ambient';
-
 export default function App() {
   const [state, setState] = useState<State | null>(null);
   const [actions, setActions] = useState<Action[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [token, setTok] = useState(api.getToken());
   const [busy, setBusy] = useState(false);
-  // Which batch is painted behind the page, if any. Persisted so a screen left
-  // on this comes back to the same view after a reload or a deploy.
-  const [ambient, setAmbient] = useState<{ id: string; label: string } | null>(() => {
-    try { const v = localStorage.getItem(AMBIENT_KEY); return v ? JSON.parse(v) : null; } catch { return null; }
-  });
-  const [uiHidden, setUiHidden] = useState(false);
-
-  const chooseAmbient = useCallback((a: { id: string; label: string } | null) => {
-    setAmbient(a);
-    if (!a) setUiHidden(false);
-    try {
-      if (a) localStorage.setItem(AMBIENT_KEY, JSON.stringify(a));
-      else localStorage.removeItem(AMBIENT_KEY);
-    } catch { /* private mode: the view still works, it just will not persist */ }
-  }, []);
-
-  // Escape brings the interface back. Without it, hiding the UI on a device
-  // with no hover (a tablet on a wall) could strand you.
-  useEffect(() => {
-    if (!uiHidden) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setUiHidden(false); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [uiHidden]);
-
+  const batchId = batchIdFrom(usePath());
   const load = useCallback(async () => {
     try {
       const [s, a] = await Promise.all([api.getState(), api.getActions()]);
@@ -101,14 +75,14 @@ export default function App() {
     );
   }
 
+  if (batchId) return <BatchDetail batchId={batchId} state={state} />;
+
   if (!state) return <div className="wrap"><p className="muted">Loading…</p></div>;
 
   const armed = state.config.autoTopupEnabled && !state.config.dryRun;
 
   return (
-    <>
-      {ambient && <AmbientMap batchId={ambient.id} />}
-      <div className={`wrap${uiHidden ? ' ui-hidden' : ''}`}>
+    <div className="wrap">
       <div className="spread" style={{ marginBottom: 16 }}>
         <h1>Swarm stamp monitor</h1>
         <div className="row">
@@ -142,19 +116,9 @@ export default function App() {
       )}
 
       <Overview state={state} />
-      <Batches state={state} onChange={load} onAmbient={chooseAmbient} ambientId={ambient?.id ?? null} />
+      <Batches state={state} onChange={load} />
       <Actions actions={actions} />
-      </div>
-      {ambient && (
-        <div className="ambient-bar">
-          <span className="label">background: {ambient.label || ambient.id.slice(0, 10) + '…'}</span>
-          <button onClick={() => setUiHidden((v) => !v)}>
-            {uiHidden ? 'Show interface' : 'Hide interface'}
-          </button>
-          <button onClick={() => chooseAmbient(null)}>Exit</button>
-        </div>
-      )}
-    </>
+    </div>
   );
 }
 
@@ -252,16 +216,8 @@ function Tile({ label, value, unit, sub, fiat }: {
   );
 }
 
-function Batches({ state, onChange, onAmbient, ambientId }: {
-  state: State; onChange: () => void;
-  onAmbient: (a: { id: string; label: string } | null) => void;
-  ambientId: string | null;
-}) {
+function Batches({ state, onChange }: { state: State; onChange: () => void }) {
   const threshold = state.config.topupWhenTtlBelowDays;
-  // At most one map open: they are 65,536 cells each and the point is to study
-  // one batch, not to tile five. The label comes from the row rather than the
-  // fetch so the modal has a title before the data lands.
-  const [mapFor, setMapFor] = useState<{ id: string; label: string } | null>(null);
   // Buying lives here rather than in its own panel: a new batch is a row in
   // this table, so the action belongs next to the thing it changes.
   const [creating, setCreating] = useState(false);
@@ -283,24 +239,11 @@ function Batches({ state, onChange, onAmbient, ambientId }: {
             </thead>
             <tbody>
               {state.batches.map((b) => (
-                <BatchRow key={b.batchID} b={b} threshold={threshold} onChange={onChange}
-                  mapOpen={mapFor?.id === b.batchID}
-                  onToggleMap={() => setMapFor(mapFor?.id === b.batchID ? null : { id: b.batchID, label: b.label })} />
+                <BatchRow key={b.batchID} b={b} threshold={threshold} onChange={onChange} />
               ))}
             </tbody>
           </table>
         </div>
-      )}
-      {mapFor && (
-        <Modal title={`Bucket map — ${mapFor.label || mapFor.id.slice(0, 12) + '…'}`}
-          onClose={() => setMapFor(null)}>
-          <BucketMap batchId={mapFor.id}
-            isAmbient={ambientId === mapFor.id}
-            onAmbient={() => {
-              onAmbient(ambientId === mapFor.id ? null : mapFor);
-              if (ambientId !== mapFor.id) setMapFor(null);
-            }} />
-        </Modal>
       )}
       {/* Deliberately not closed by onChange: after a purchase the wizard shows
           which batch it bought and what it cost, and that is the receipt. The
@@ -351,9 +294,7 @@ function Plans({ plans, batches }: { plans: State['plans']; batches: Batch[] }) 
   );
 }
 
-function BatchRow({ b, threshold, onChange, mapOpen, onToggleMap }: {
-  b: Batch; threshold: number; onChange: () => void; mapOpen: boolean; onToggleMap: () => void;
-}) {
+function BatchRow({ b, threshold, onChange }: { b: Batch; threshold: number; onChange: () => void }) {
   const sev = ttlSeverity(b.ttlDays, threshold);
   const [label, setLabel] = useState(b.label);
   const [busy, setBusy] = useState(false);
@@ -423,10 +364,10 @@ function BatchRow({ b, threshold, onChange, mapOpen, onToggleMap }: {
         {b.usable ? '' : 'unusable '}{b.immutableFlag ? 'immutable' : 'mutable'}
       </td>
       <td>
-        <button onClick={onToggleMap} style={{ padding: '4px 10px', fontSize: 12 }}
-          title="Show how this batch's 65,536 buckets are filled, and the exact stored size">
-          {mapOpen ? 'hide map' : 'map'}
-        </button>
+        <a className="rowlink" {...link(`/batch/${b.batchID}`)}
+          title="Open this batch: bucket map, exact stored size, upload">
+          open →
+        </a>
       </td>
     </tr>
   );

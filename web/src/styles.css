@@ -117,9 +117,13 @@ h2 { font-size: 14px; color: var(--text-secondary); letter-spacing: 0.02em; }
   image-rendering: pixelated;
   pointer-events: none;
 }
-/* The dashboard rides above the map. Cards keep their opaque surface so text
+/* Interactive on the batch page: hovering the background reports the bucket
+   under the cursor. Still behind the panel, which sits above it. */
+.ambient.is-interactive { pointer-events: auto; }
+
+/* The panel rides above the map. Cards keep their opaque surface so text
    contrast is unaffected by whatever is painted behind them — the map shows
-   through the gaps, and hiding the interface reveals it whole. */
+   through the gaps, and hiding the panel reveals it whole. */
 body:has(.ambient) .wrap { position: relative; z-index: 1; }
 
 .wrap.ui-hidden {
@@ -172,6 +176,9 @@ body:has(.ambient) .wrap { position: relative; z-index: 1; }
 /* Hover readout for the bucket map. Positioned against the canvas wrapper and
    never intercepting the pointer, or it would fight the mousemove it exists to
    report on. */
+/* Fixed variant follows the cursor over the full-viewport map, where an
+   absolutely positioned readout would be relative to a scrolled ancestor. */
+.tooltip.is-fixed { position: fixed; z-index: 20; }
 .tooltip {
   position: absolute; pointer-events: none; z-index: 5;
   background: var(--surface-1); color: var(--text-primary);
@@ -250,3 +257,11 @@ input[type='text'], input[type='number'] {
   border-left: 3px solid var(--warning);
   background: color-mix(in srgb, var(--warning) 8%, transparent);
 }
+
+/* Row link into a batch, and the way back out. */
+.rowlink, .backlink {
+  color: var(--series-1); text-decoration: none; font-size: 13px; white-space: nowrap;
+}
+.rowlink:hover, .backlink:hover { text-decoration: underline; }
+.backlink { font-size: 13px; }
+tr:hover .rowlink { text-decoration: underline; }
