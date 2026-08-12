@@ -31,6 +31,15 @@ function hex(c: string): [number, number, number] {
 
 const lerp = (a: number, b: number, t: number) => Math.round(a + (b - a) * t);
 
+/**
+ * Encoded fill at which a bucket counts as "nearly full".
+ *
+ * 80% of the 1..254 range used for partial buckets. Matches the threshold in
+ * bucketPressure() so the colour and the written warning agree — a bucket that
+ * turns amber here is one the summary is already calling out.
+ */
+const NEAR_FULL_BYTE = Math.round(0.8 * 254);
+
 /** Read a CSS custom property so the map tracks the active theme. */
 function cssVar(el: Element, name: string, fallback: string): string {
   const v = getComputedStyle(el).getPropertyValue(name).trim();
@@ -83,9 +92,10 @@ export function BucketMap({ batchId }: { batchId: string }) {
     const root = document.documentElement;
     // Sequential ramp: light -> dark in light mode, and the anchors are already
     // flipped for dark mode in styles.css, so this reads correctly in both.
-    const c0 = hex(cssVar(root, '--seq-250', '#86b6ef'));
-    const c1 = hex(cssVar(root, '--seq-450', '#2a78d6'));
-    const c2 = hex(cssVar(root, '--seq-600', '#184f95'));
+    const c0 = hex(cssVar(root, '--map-low', '#b7d3f6'));
+    const c1 = hex(cssVar(root, '--map-mid', '#3987e5'));
+    const c2 = hex(cssVar(root, '--map-high', '#184f95'));
+    const near = hex(cssVar(root, '--warning', '#fab219'));
     const full = hex(cssVar(root, '--critical', '#d03b3b'));
     const empty = hex(cssVar(root, '--grid', '#e1e0d9'));
 
@@ -96,8 +106,14 @@ export function BucketMap({ batchId }: { batchId: string }) {
       if (f === 0) {
         [r, g, b] = empty;
       } else if (f >= 255) {
-        // At capacity: a state, not a degree. Reserved colour, named in the legend.
+        // At capacity: a state, not a degree. Reserved critical colour.
         [r, g, b] = full;
+      } else if (f >= NEAR_FULL_BYTE) {
+        // >=80% full: also a state, and the same threshold the written warning
+        // uses, so the map turns amber exactly when the text says it should.
+        // Kept off the blue ramp deliberately — "nearly out of room" must not
+        // read as merely one more shade darker.
+        [r, g, b] = near;
       } else {
         // Floor the ramp so an occupied bucket is never near-invisible against
         // the empty colour. A bucket holding 1 of 256 stamps is 0.4% full and
@@ -106,7 +122,7 @@ export function BucketMap({ batchId }: { batchId: string }) {
         // be blank exactly when it has something to say. Applied at draw time
         // only: the encoded byte stays a true fill fraction, which is what the
         // hover readout derives its count from.
-        const t = 0.35 + 0.65 * (f / 255);
+        const t = 0.35 + 0.65 * (f / NEAR_FULL_BYTE);
         if (t < 0.5) {
           const u = t / 0.5;
           r = lerp(c0[0], c1[0], u); g = lerp(c0[1], c1[1], u); b = lerp(c0[2], c1[2], u);
@@ -175,9 +191,10 @@ export function BucketMap({ batchId }: { batchId: string }) {
           {/* Identity is never colour alone: every swatch is labelled. */}
           <div className="row" style={{ gap: 16, marginTop: 10, fontSize: 12, flexWrap: 'wrap' }}>
             <Key color="var(--grid)" label="empty" />
-            <Key color="var(--seq-250)" label="lightly used" />
-            <Key color="var(--seq-450)" label="half full" />
-            <Key color="var(--seq-600)" label="nearly full" />
+            <Key color="var(--map-low)" label="lightly used" />
+            <Key color="var(--map-mid)" label="half full" />
+            <Key color="var(--map-high)" label="mostly full" />
+            <Key color="var(--warning)" label="nearly full — 80%+" />
             <Key color="var(--critical)" label="at capacity — rejects or recycles" />
           </div>
 

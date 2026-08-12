@@ -71,10 +71,16 @@ export function buildGrid(r: BucketReport): BucketGrid {
     if (c > 0) used++;
     if (c >= ub) full++;
     if (c > max) max = c;
-    // Scale to 0-255. A non-empty bucket must never round to 0: a single
-    // occupied bin in a depth-28 batch is 1/4096 of capacity, and rounding it
-    // away would draw an empty grid over real data.
-    bytes[i] = c === 0 ? 0 : Math.max(1, Math.min(255, Math.round((c / ub) * 255)));
+    // 0 and 255 are reserved sentinels: 0 means empty, 255 means AT CAPACITY,
+    // and everything in between scales across 1..254. Scaling a partial bucket
+    // over the full 0..255 would let 4,095 of 4,096 round up to 255 and paint a
+    // bucket that still accepts writes with the colour of one that does not.
+    // A non-empty bucket must also never round to 0: a single stamp in a
+    // depth-28 batch is 1/4096 of a bucket, and rounding it away would draw an
+    // empty grid over real data.
+    bytes[i] = c === 0 ? 0
+      : c >= ub ? 255
+      : Math.max(1, Math.min(254, Math.round((c / ub) * 254)));
   }
 
   return {

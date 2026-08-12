@@ -17,6 +17,16 @@
   --seq-450: #2a78d6;
   --seq-600: #184f95;
 
+  /* Bucket-map fill ramp. Three anchors spanning most of the blue 100-700
+     scale, so adjacent fill levels are actually distinguishable — the previous
+     250/450/600 slice was too narrow to read. Sequential, one hue, monotone
+     lightness. The danger states are NOT on this ramp: they use the reserved
+     warning/critical status colours, so "getting full" and "full" read as
+     states rather than as two more shades of the same blue. */
+  --map-low: #b7d3f6;
+  --map-mid: #3987e5;
+  --map-high: #184f95;
+
   --good: #0ca30c;
   --warning: #fab219;
   --serious: #ec835a;
@@ -37,6 +47,9 @@
     --seq-250: #184f95;
     --seq-450: #3987e5;
     --seq-600: #86b6ef;
+    --map-low: #184f95;
+    --map-mid: #3987e5;
+    --map-high: #b7d3f6;
   }
 }
 :root[data-theme='dark'] {
@@ -53,6 +66,9 @@
   --seq-250: #184f95;
   --seq-450: #3987e5;
   --seq-600: #86b6ef;
+  --map-low: #184f95;
+  --map-mid: #3987e5;
+  --map-high: #b7d3f6;
 }
 
 * { box-sizing: border-box; }

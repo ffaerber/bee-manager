@@ -62,7 +62,18 @@ describe('buildGrid', () => {
 
   it('scales the middle of the range proportionally', () => {
     const g = buildGrid(report(24, (i) => (i === 0 ? 128 : 0)));
-    expect(decode(g.grid)[0]).toBe(128); // 128/256 -> 127.5 -> 128
+    expect(decode(g.grid)[0]).toBe(127); // 128/256 over the 1..254 range
+  });
+
+  it('never rounds a nearly-full bucket up to the at-capacity sentinel', () => {
+    // The reason 255 is reserved: at depth 28 a bucket holds 4,096 stamps, and
+    // scaling 4,095 of them across the full 0..255 rounds to 255 — painting a
+    // bucket that still accepts writes exactly like one that refuses them.
+    const g = buildGrid(report(28, (i) => (i === 0 ? 4095 : i === 1 ? 4096 : 0)));
+    const px = decode(g.grid);
+    expect(px[0]).toBe(254);
+    expect(px[1]).toBe(255);
+    expect(g.fullBuckets).toBe(1);
   });
 });
 
