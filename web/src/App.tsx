@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import { TOKEN } from './api';
 import { BucketMap } from './BucketMap';
+import { AmbientMap } from './AmbientMap';
 import { Modal } from './Modal';
 import type { Batch, Ladder, Quote, State, Action } from './api';
 
@@ -20,12 +21,38 @@ function fmtDays(d: number) {
   return `${d.toFixed(d < 10 ? 1 : 0)} d`;
 }
 
+const AMBIENT_KEY = 'ssm.ambient';
+
 export default function App() {
   const [state, setState] = useState<State | null>(null);
   const [actions, setActions] = useState<Action[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [token, setTok] = useState(api.getToken());
   const [busy, setBusy] = useState(false);
+  // Which batch is painted behind the page, if any. Persisted so a screen left
+  // on this comes back to the same view after a reload or a deploy.
+  const [ambient, setAmbient] = useState<{ id: string; label: string } | null>(() => {
+    try { const v = localStorage.getItem(AMBIENT_KEY); return v ? JSON.parse(v) : null; } catch { return null; }
+  });
+  const [uiHidden, setUiHidden] = useState(false);
+
+  const chooseAmbient = useCallback((a: { id: string; label: string } | null) => {
+    setAmbient(a);
+    if (!a) setUiHidden(false);
+    try {
+      if (a) localStorage.setItem(AMBIENT_KEY, JSON.stringify(a));
+      else localStorage.removeItem(AMBIENT_KEY);
+    } catch { /* private mode: the view still works, it just will not persist */ }
+  }, []);
+
+  // Escape brings the interface back. Without it, hiding the UI on a device
+  // with no hover (a tablet on a wall) could strand you.
+  useEffect(() => {
+    if (!uiHidden) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setUiHidden(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [uiHidden]);
 
   const load = useCallback(async () => {
     try {
@@ -79,7 +106,9 @@ export default function App() {
   const armed = state.config.autoTopupEnabled && !state.config.dryRun;
 
   return (
-    <div className="wrap">
+    <>
+      {ambient && <AmbientMap batchId={ambient.id} />}
+      <div className={`wrap${uiHidden ? ' ui-hidden' : ''}`}>
       <div className="spread" style={{ marginBottom: 16 }}>
         <h1>Swarm stamp monitor</h1>
         <div className="row">
@@ -113,9 +142,19 @@ export default function App() {
       )}
 
       <Overview state={state} />
-      <Batches state={state} onChange={load} />
+      <Batches state={state} onChange={load} onAmbient={chooseAmbient} ambientId={ambient?.id ?? null} />
       <Actions actions={actions} />
-    </div>
+      </div>
+      {ambient && (
+        <div className="ambient-bar">
+          <span className="label">background: {ambient.label || ambient.id.slice(0, 10) + '…'}</span>
+          <button onClick={() => setUiHidden((v) => !v)}>
+            {uiHidden ? 'Show interface' : 'Hide interface'}
+          </button>
+          <button onClick={() => chooseAmbient(null)}>Exit</button>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -213,7 +252,11 @@ function Tile({ label, value, unit, sub, fiat }: {
   );
 }
 
-function Batches({ state, onChange }: { state: State; onChange: () => void }) {
+function Batches({ state, onChange, onAmbient, ambientId }: {
+  state: State; onChange: () => void;
+  onAmbient: (a: { id: string; label: string } | null) => void;
+  ambientId: string | null;
+}) {
   const threshold = state.config.topupWhenTtlBelowDays;
   // At most one map open: they are 65,536 cells each and the point is to study
   // one batch, not to tile five. The label comes from the row rather than the
@@ -251,7 +294,12 @@ function Batches({ state, onChange }: { state: State; onChange: () => void }) {
       {mapFor && (
         <Modal title={`Bucket map — ${mapFor.label || mapFor.id.slice(0, 12) + '…'}`}
           onClose={() => setMapFor(null)}>
-          <BucketMap batchId={mapFor.id} />
+          <BucketMap batchId={mapFor.id}
+            isAmbient={ambientId === mapFor.id}
+            onAmbient={() => {
+              onAmbient(ambientId === mapFor.id ? null : mapFor);
+              if (ambientId !== mapFor.id) setMapFor(null);
+            }} />
         </Modal>
       )}
       {/* Deliberately not closed by onChange: after a purchase the wizard shows

@@ -21,32 +21,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as api from './api';
 import type { BucketGrid } from './api';
+import { decodeGrid, fillColor, readPalette } from './mapColors';
 
-/** #rrggbb -> [r,g,b]. */
-function hex(c: string): [number, number, number] {
-  const m = c.trim().replace('#', '');
-  const v = m.length === 3 ? m.split('').map((x) => x + x).join('') : m;
-  return [parseInt(v.slice(0, 2), 16), parseInt(v.slice(2, 4), 16), parseInt(v.slice(4, 6), 16)];
-}
-
-const lerp = (a: number, b: number, t: number) => Math.round(a + (b - a) * t);
-
-/**
- * Encoded fill at which a bucket counts as "nearly full".
- *
- * 80% of the 1..254 range used for partial buckets. Matches the threshold in
- * bucketPressure() so the colour and the written warning agree — a bucket that
- * turns amber here is one the summary is already calling out.
- */
-const NEAR_FULL_BYTE = Math.round(0.8 * 254);
-
-/** Read a CSS custom property so the map tracks the active theme. */
-function cssVar(el: Element, name: string, fallback: string): string {
-  const v = getComputedStyle(el).getPropertyValue(name).trim();
-  return v || fallback;
-}
-
-export function BucketMap({ batchId }: { batchId: string }) {
+export function BucketMap({ batchId, isAmbient, onAmbient }: {
+  batchId: string;
+  isAmbient?: boolean;
+  onAmbient?: () => void;
+}) {
   const [data, setData] = useState<BucketGrid | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [hover, setHover] = useState<{ x: number; y: number; id: number; count: number } | null>(null);
@@ -63,10 +44,7 @@ export function BucketMap({ batchId }: { batchId: string }) {
   /** Decoded fill bytes, one per bucket. */
   const fills = useMemo(() => {
     if (!data) return null;
-    const bin = atob(data.grid);
-    const out = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-    return out;
+    return decodeGrid(data.grid);
   }, [data]);
 
   // The theme toggle stamps data-theme on <html>; the OS setting changes the
@@ -92,45 +70,11 @@ export function BucketMap({ batchId }: { batchId: string }) {
     const root = document.documentElement;
     // Sequential ramp: light -> dark in light mode, and the anchors are already
     // flipped for dark mode in styles.css, so this reads correctly in both.
-    const c0 = hex(cssVar(root, '--map-low', '#b7d3f6'));
-    const c1 = hex(cssVar(root, '--map-mid', '#3987e5'));
-    const c2 = hex(cssVar(root, '--map-high', '#184f95'));
-    const near = hex(cssVar(root, '--warning', '#fab219'));
-    const full = hex(cssVar(root, '--critical', '#d03b3b'));
-    const empty = hex(cssVar(root, '--grid', '#e1e0d9'));
+    const p = readPalette(root);
 
     const img = ctx.createImageData(side, side);
     for (let i = 0; i < fills.length; i++) {
-      const f = fills[i];
-      let r: number, g: number, b: number;
-      if (f === 0) {
-        [r, g, b] = empty;
-      } else if (f >= 255) {
-        // At capacity: a state, not a degree. Reserved critical colour.
-        [r, g, b] = full;
-      } else if (f >= NEAR_FULL_BYTE) {
-        // >=80% full: also a state, and the same threshold the written warning
-        // uses, so the map turns amber exactly when the text says it should.
-        // Kept off the blue ramp deliberately — "nearly out of room" must not
-        // read as merely one more shade darker.
-        [r, g, b] = near;
-      } else {
-        // Floor the ramp so an occupied bucket is never near-invisible against
-        // the empty colour. A bucket holding 1 of 256 stamps is 0.4% full and
-        // would otherwise render as the lightest step, indistinguishable from
-        // empty — and sparse batches are the normal case here, so the map would
-        // be blank exactly when it has something to say. Applied at draw time
-        // only: the encoded byte stays a true fill fraction, which is what the
-        // hover readout derives its count from.
-        const t = 0.35 + 0.65 * (f / NEAR_FULL_BYTE);
-        if (t < 0.5) {
-          const u = t / 0.5;
-          r = lerp(c0[0], c1[0], u); g = lerp(c0[1], c1[1], u); b = lerp(c0[2], c1[2], u);
-        } else {
-          const u = (t - 0.5) / 0.5;
-          r = lerp(c1[0], c2[0], u); g = lerp(c1[1], c2[1], u); b = lerp(c1[2], c2[2], u);
-        }
-      }
+      const [r, g, b] = fillColor(fills[i], p);
       const o = i * 4;
       img.data[o] = r; img.data[o + 1] = g; img.data[o + 2] = b; img.data[o + 3] = 255;
     }
@@ -214,6 +158,19 @@ export function BucketMap({ batchId }: { batchId: string }) {
               ? { borderLeftColor: 'var(--good)', background: 'transparent' } : undefined}>
             {data.pressure.message}
           </div>
+
+          {onAmbient && (
+            <div className="row" style={{ marginTop: 14 }}>
+              <button onClick={onAmbient}>
+                {isAmbient ? 'Remove from background' : 'Show as background'}
+              </button>
+              <span className="muted" style={{ fontSize: 12 }}>
+                {isAmbient
+                  ? 'This batch is painted behind the dashboard.'
+                  : 'Paint this batch behind the dashboard, refreshed every minute.'}
+              </span>
+            </div>
+          )}
 
           {data.totalChunks > 0 && data.usedBuckets > 0 && (
             <p className="muted" style={{ fontSize: 12, marginTop: 10 }}>

@@ -108,6 +108,44 @@ h2 { font-size: 14px; color: var(--text-secondary); letter-spacing: 0.02em; }
    only qualifies it. Mirrors .hero-unit at tile scale. */
 .tile-unit { font-size: 13px; font-weight: 400; color: var(--text-secondary); margin-left: 5px; }
 
+/* ── ambient background map ─────────────────────────────────────────────
+   Behind everything, and inert: it must never swallow a click meant for the
+   dashboard sitting on top of it. */
+.ambient {
+  position: fixed; inset: 0; z-index: 0;
+  width: 100vw; height: 100vh;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+/* The dashboard rides above the map. Cards keep their opaque surface so text
+   contrast is unaffected by whatever is painted behind them — the map shows
+   through the gaps, and hiding the interface reveals it whole. */
+body:has(.ambient) .wrap { position: relative; z-index: 1; }
+
+.wrap.ui-hidden {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 240ms ease-out;
+}
+.wrap { transition: opacity 240ms ease-out; }
+
+/* Ambient controls: the one thing that stays visible when the interface is
+   hidden, or there would be no way back. */
+.ambient-bar {
+  position: fixed; right: 16px; bottom: 16px; z-index: 10;
+  display: flex; gap: 8px; align-items: center;
+  background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: 999px; padding: 6px 8px 6px 14px;
+  box-shadow: 0 2px 12px rgb(0 0 0 / 0.22);
+  font-size: 12px;
+}
+.ambient-bar .label { color: var(--text-secondary); white-space: nowrap; }
+.ambient-bar button { padding: 5px 12px; font-size: 12px; }
+/* Faded until hovered so it does not sit on top of the view it exists to
+   reveal, but never fully invisible — a control you cannot find is a trap. */
+.wrap.ui-hidden ~ .ambient-bar { opacity: 0.35; }
+.ambient-bar:hover, .ambient-bar:focus-within { opacity: 1; }
+
 /* ── modal ──────────────────────────────────────────────────────────────
    The element is the sizing box, so width/max-height live here and the body
    scrolls inside it. Padding is zero so the backdrop click test stays exact:
