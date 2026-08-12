@@ -12,6 +12,7 @@ import { Db } from './db';
 import { Alerter } from './alerts';
 import { Poller } from './poller';
 import { createServer } from './server';
+import { PriceFeed } from './price';
 import { readFileSync } from 'node:fs';
 
 const cfg = loadConfig();
@@ -55,7 +56,11 @@ if (!adminToken) {
 
 poller.start();
 
-const server = createServer({ cfg, bee, db, alerter, poller, adminToken });
+// Display-only fiat quote. PRICE_ENABLED=false turns it off for an
+// air-gapped deployment; nothing else changes when it is absent.
+const price = new PriceFeed({ enabled: !/^(0|false)$/i.test(process.env.PRICE_ENABLED ?? 'true') });
+
+const server = createServer({ cfg, bee, db, alerter, poller, adminToken, price });
 server.listen(cfg.port);
 console.log(`listening on :${cfg.port}`);
 

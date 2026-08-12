@@ -28,6 +28,7 @@ import { burnRate, quote, depthLadder, recommendDepth, reviewQuote, formatBytes,
 import { plurToBzz, bzzToPlur, storedBytes, capacityBytes, costPlur } from './math';
 import { checkCaps } from './evaluate';
 import type { Config } from './config';
+import { PriceFeed } from './price';
 
 export interface ServerDeps {
   cfg: Config;
@@ -36,6 +37,8 @@ export interface ServerDeps {
   alerter: Alerter;
   poller: Poller;
   adminToken: string | null;
+  /** Optional fiat quote for display. Omitted in tests; never affects spending. */
+  price?: PriceFeed;
 }
 
 /** bigint is not JSON-serialisable; render as string to preserve exactness. */
@@ -43,6 +46,9 @@ const json = (v: unknown) => JSON.parse(JSON.stringify(v, (_k, x) => (typeof x =
 
 export function createServer(deps: ServerDeps) {
   const { cfg, bee, db, alerter, poller, adminToken } = deps;
+  // Disabled feed when none supplied: get() then always resolves null and the
+  // dashboard omits fiat, which is exactly the offline behaviour.
+  const price$ = deps.price ?? new PriceFeed({ enabled: false });
 
   const app = new Elysia()
     .onError(({ error, set }) => {
@@ -86,9 +92,14 @@ export function createServer(deps: ServerDeps) {
           }
         })
 
-        .get('/state', () => {
+        .get('/state', async () => {
           const r = poller.last;
           if (!r) return { ok: false, error: 'no poll completed yet' };
+          // Display only, and allowed to be null — see src/price.ts. Awaited
+          // here rather than in the poller so the figure is fresh on a manual
+          // refresh, but it is cached and never throws, so it cannot delay or
+          // fail this response in any meaningful way.
+          const price = await price$.get();
           const unmanaged = db.unmanagedBatchIds();
           const batches = r.batches.map((b) => ({
             ...b,
@@ -111,6 +122,12 @@ export function createServer(deps: ServerDeps) {
               address: r.wallet.walletAddress,
             },
             chain: r.chain && { block: r.chain.block, price: r.chain.currentPrice.toString() },
+            /** Fiat quote for BZZ, or null when unavailable. Never used in any calculation that spends. */
+            fiat: price && {
+              usd: price.usd, eur: price.eur,
+              usd24hChange: price.usd24hChange,
+              fetchedAt: price.fetchedAt,
+            },
             batches,
             plans: r.plans,
             config: {

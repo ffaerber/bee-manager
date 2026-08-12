@@ -26,6 +26,8 @@ export interface State {
   burnPer30DaysBzz: number; runwayDays: number;
   wallet?: { bzz: number; xdai: number; address: string };
   chain?: { block: number; price: string };
+  /** Display-only fiat quote; null/absent whenever the price feed is off or unreachable. */
+  fiat?: { usd: number; eur: number; usd24hChange: number; fetchedAt: number } | null;
   batches: Batch[];
   plans: { kind: 'none' | 'topup' | 'dilute' | 'blocked'; batchId: string; reason: string }[];
   config: { autoTopupEnabled: boolean; dryRun: boolean; topupWhenTtlBelowDays: number; topupTargetTtlDays: number };

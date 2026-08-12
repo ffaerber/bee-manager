@@ -122,6 +122,11 @@ export default function App() {
 function Overview({ state }: { state: State }) {
   const runway = state.runwayDays;
   const sev = runway < 30 ? 'critical' : runway < 90 ? 'warning' : 'good';
+  /** Sub-line for a tile, e.g. "≈ $8.27". Absent when there is no quote. */
+  const fiat = (bzz: number | undefined, suffix = '') => {
+    const usd = usdOf(bzz, state.fiat);
+    return usd == null ? undefined : `≈ $${usd < 10 ? usd.toFixed(2) : Math.round(usd).toLocaleString()}${suffix}`;
+  };
   return (
     <div className="card">
       <div className="spread" style={{ alignItems: 'flex-end', marginBottom: 16 }}>
@@ -137,21 +142,54 @@ function Overview({ state }: { state: State }) {
         </div>
       </div>
       <div className="tiles">
-        <Tile label="Wallet" value={`${state.wallet?.bzz.toFixed(2) ?? '—'}`} sub="BZZ" />
+        <Tile label="Wallet" value={`${state.wallet?.bzz.toFixed(2) ?? '—'}`} sub="xBZZ"
+          fiat={fiat(state.wallet?.bzz)} />
         <Tile label="Gas" value={`${state.wallet?.xdai.toFixed(2) ?? '—'}`} sub="xDAI" />
-        <Tile label="Burn rate" value={state.burnPer30DaysBzz.toFixed(2)} sub="BZZ per 30 days" />
+        <Tile label="Burn rate" value={state.burnPer30DaysBzz.toFixed(2)} sub="xBZZ per 30 days"
+          fiat={fiat(state.burnPer30DaysBzz, '/mo')} />
         <Tile label="Batches" value={String(state.batches.length)} sub={`block time ${(state.msPerBlock / 1000).toFixed(2)}s`} />
       </div>
+      {state.fiat && <PriceNote fiat={state.fiat} />}
     </div>
   );
 }
 
-function Tile({ label, value, sub }: { label: string; value: string; sub?: string }) {
+/** USD for a BZZ amount, or undefined when there is no quote to convert with. */
+export function usdOf(bzz: number | undefined, fiat: State['fiat']): number | undefined {
+  if (bzz == null || !fiat) return undefined;
+  return bzz * fiat.usd;
+}
+
+/**
+ * The quote's provenance, stated plainly.
+ *
+ * A fiat number with no source and no timestamp invites more trust than it has
+ * earned — this one comes from a third party, can be minutes old, and plays no
+ * part in any spending decision. Saying so costs one line.
+ */
+function PriceNote({ fiat }: { fiat: NonNullable<State['fiat']> }) {
+  const mins = Math.round((Date.now() - fiat.fetchedAt) / 60_000);
+  const chg = fiat.usd24hChange;
+  return (
+    <p className="muted" style={{ fontSize: 12, marginTop: 12 }}>
+      BZZ ${fiat.usd.toFixed(4)} · €{fiat.eur.toFixed(4)}
+      {chg !== 0 && (
+        <span style={{ color: chg > 0 ? 'var(--good)' : 'var(--critical)' }}>
+          {' '}{chg > 0 ? '▲' : '▼'}{Math.abs(chg).toFixed(1)}% 24h
+        </span>
+      )}
+      {' '}· CoinGecko, {mins < 1 ? 'just now' : `${mins}m ago`} · display only, caps are denominated in BZZ
+    </p>
+  );
+}
+
+function Tile({ label, value, sub, fiat }: { label: string; value: string; sub?: string; fiat?: string }) {
   return (
     <div>
       <div className="tile-label">{label}</div>
       <div className="tile-value">{value}</div>
       {sub && <div className="tile-sub">{sub}</div>}
+      {fiat && <div className="tile-sub" style={{ opacity: 0.75 }}>{fiat}</div>}
     </div>
   );
 }
