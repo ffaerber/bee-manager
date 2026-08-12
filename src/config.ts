@@ -36,7 +36,7 @@ function plur(key: string, fallbackBzz: string): bigint {
   try {
     return bzzToPlur(v === undefined || v === '' ? fallbackBzz : v);
   } catch {
-    throw new Error(`${key}: expected a positive decimal BZZ amount, got "${v}"`);
+    throw new Error(`${key}: expected a positive decimal xBZZ amount, got "${v}"`);
   }
 }
 
@@ -125,7 +125,7 @@ export function describeConfig(c: Config): string {
     `bee=${c.beeUrl} poll=${c.pollIntervalMs / 1000}s`,
     `autoTopup=${c.autoTopupEnabled ? 'ON' : 'off'} dryRun=${c.dryRun ? 'ON' : 'off'}`,
     `topup when TTL<${c.topupWhenTtlBelowSec / 86400}d -> ${c.topupTargetTtlSec / 86400}d`,
-    `caps: ${bzz(c.maxTopupPlurPerBatch)}/action ${bzz(c.maxTopupPlurPerDay)}/day floor ${bzz(c.minWalletPlur)} BZZ`,
+    `caps: ${bzz(c.maxTopupPlurPerBatch)}/action ${bzz(c.maxTopupPlurPerDay)}/day floor ${bzz(c.minWalletPlur)} xBZZ`,
     `webhook=${c.webhookUrl ? 'set' : 'none'}`,
   ].join(' | ');
 }

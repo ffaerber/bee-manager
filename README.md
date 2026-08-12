@@ -109,6 +109,26 @@ curl -X POST "https://stamps.example.org/api/apps/mysite/upload" \
 Point an ENS content hash at that reference and the site is live. This is the
 path that lets the Bee node itself stay off the internet.
 
+## xBZZ vs BZZ
+
+Every amount this service reports — wallet balance, batch cost, burn rate, caps,
+top-ups — is **xBZZ**: the Gnosis-side token, mainnet BZZ bridged 1:1 via
+Omnibridge. That is what the Bee node's wallet actually holds, and it is why the
+gas figure beside it reads xDAI rather than DAI. The UI ticker is defined once,
+as `TOKEN` in `web/src/api.ts`, so the two cannot drift apart.
+
+**BZZ** appears in exactly two places, both deliberate:
+
+- the market quote (`BZZ $0.0416`), which prices the underlying asset — there is
+  no separate liquid market for the bridged form worth quoting;
+- the environment variable names `MAX_TOPUP_BZZ_PER_BATCH`,
+  `MAX_TOPUP_BZZ_PER_DAY` and `MIN_WALLET_BZZ`, which are a deployment contract.
+  Renaming them for cosmetic consistency would silently drop the configured
+  values back to defaults — one of them is a spend guard. `test/config-env-names.test.ts`
+  pins them for that reason.
+
+Fiat is display-only and never enters a spending decision; see `src/price.ts`.
+
 ## Mutable by default
 
 Batches are bought **mutable** unless you ask otherwise. Bee's own default is

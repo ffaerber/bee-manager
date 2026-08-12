@@ -127,7 +127,7 @@ export class Poller {
       await this.alerter.send({
         event: 'wallet_low', level: 'warn',
         message: `Wallet covers ~${runwayDays.toFixed(0)} more days at the current burn of ` +
-                 `${plurToBzz(burn).toFixed(2)} BZZ/30d (balance ${plurToBzz(wallet.bzzBalance).toFixed(2)} BZZ).`,
+                 `${plurToBzz(burn).toFixed(2)} xBZZ/30d (balance ${plurToBzz(wallet.bzzBalance).toFixed(2)} xBZZ).`,
         details: { runwayDays, burnPer30DaysBzz: plurToBzz(burn) },
       });
     } else {
@@ -176,7 +176,7 @@ export class Poller {
       event: 'batch_low', level: 'warn', batchId: plan.batchId,
       costBzz: plurToBzz(plan.cost),
       message: `Batch ${batch?.label || plan.batchId.slice(0, 12)}: ${plan.reason} ` +
-               `(${plurToBzz(plan.cost).toFixed(3)} BZZ)`,
+               `(${plurToBzz(plan.cost).toFixed(3)} xBZZ)`,
     });
 
     if (!this.cfg.autoTopupEnabled || this.cfg.dryRun) {
@@ -222,7 +222,7 @@ export class Poller {
         event: 'topup_executed', level: 'info', batchId: plan.batchId,
         costBzz: plurToBzz(plan.cost),
         message: `${kind} on ${batch?.label || plan.batchId.slice(0, 12)}: ` +
-                 `${plurToBzz(plan.cost).toFixed(3)} BZZ — ${plan.reason}`,
+                 `${plurToBzz(plan.cost).toFixed(3)} xBZZ — ${plan.reason}`,
       });
     } catch (e: any) {
       const msg = e?.message ?? String(e);

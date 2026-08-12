@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
+import { TOKEN } from './api';
 import type { Batch, Ladder, Quote, State, Action } from './api';
 
 const DAY = 86_400;
@@ -142,10 +143,10 @@ function Overview({ state }: { state: State }) {
         </div>
       </div>
       <div className="tiles">
-        <Tile label="Wallet" value={`${state.wallet?.bzz.toFixed(2) ?? '—'}`} sub="xBZZ"
+        <Tile label="Wallet" value={`${state.wallet?.bzz.toFixed(2) ?? '—'}`} sub={TOKEN}
           fiat={fiat(state.wallet?.bzz)} />
         <Tile label="Gas" value={`${state.wallet?.xdai.toFixed(2) ?? '—'}`} sub="xDAI" />
-        <Tile label="Burn rate" value={state.burnPer30DaysBzz.toFixed(2)} sub="xBZZ per 30 days"
+        <Tile label="Burn rate" value={state.burnPer30DaysBzz.toFixed(2)} sub={`${TOKEN} per 30 days`}
           fiat={fiat(state.burnPer30DaysBzz, '/mo')} />
         <Tile label="Batches" value={String(state.batches.length)} sub={`block time ${(state.msPerBlock / 1000).toFixed(2)}s`} />
       </div>
@@ -154,7 +155,7 @@ function Overview({ state }: { state: State }) {
   );
 }
 
-/** USD for a BZZ amount, or undefined when there is no quote to convert with. */
+/** USD for an xBZZ amount, or undefined when there is no quote to convert with. */
 export function usdOf(bzz: number | undefined, fiat: State['fiat']): number | undefined {
   if (bzz == null || !fiat) return undefined;
   return bzz * fiat.usd;
@@ -178,7 +179,7 @@ function PriceNote({ fiat }: { fiat: NonNullable<State['fiat']> }) {
           {' '}{chg > 0 ? '▲' : '▼'}{Math.abs(chg).toFixed(1)}% 24h
         </span>
       )}
-      {' '}· CoinGecko, {mins < 1 ? 'just now' : `${mins}m ago`} · display only, caps are denominated in BZZ
+      {' '}· CoinGecko, {mins < 1 ? 'just now' : `${mins}m ago`} · display only; amounts above are xBZZ, bridged 1:1
     </p>
   );
 }
@@ -384,8 +385,8 @@ function Wizard({ state, onDone }: { state: State; onDone: () => void }) {
     setBusy(true); setResult(null);
     try {
       const r = await api.buy({ depth, days, label: label || undefined, confirm: true });
-      if (r.dryRun) setResult(`DRY_RUN is on — would have bought depth ${depth} for ${r.wouldBuy.costBzz.toFixed(3)} BZZ.`);
-      else { setResult(`Bought batch ${r.batchId.slice(0, 16)}… for ${r.cost.costBzz.toFixed(3)} BZZ.`); onDone(); }
+      if (r.dryRun) setResult(`DRY_RUN is on — would have bought depth ${depth} for ${r.wouldBuy.costBzz.toFixed(3)} ${TOKEN}.`);
+      else { setResult(`Bought batch ${r.batchId.slice(0, 16)}… for ${r.cost.costBzz.toFixed(3)} ${TOKEN}.`); onDone(); }
     } catch (e: any) { setResult(`Failed: ${e.message}`); }
     setArm(null);
     setBusy(false);
@@ -418,8 +419,9 @@ function Wizard({ state, onDone }: { state: State; onDone: () => void }) {
 
       {selected && (
         <div className="tiles" style={{ marginTop: 20 }}>
-          <Tile label="Cost now" value={selected.costBzz.toFixed(3)} sub="BZZ" />
-          <Tile label="To keep alive" value={selected.costPer30DaysBzz.toFixed(3)} sub="BZZ per 30 days" />
+          <Tile label="Cost now" value={selected.costBzz.toFixed(3)} sub={TOKEN}
+            fiat={state.fiat ? `≈ $${(selected.costBzz * state.fiat.usd).toFixed(2)}` : undefined} />
+          <Tile label="To keep alive" value={selected.costPer30DaysBzz.toFixed(3)} sub={`${TOKEN} per 30 days`} />
           <Tile label="Capacity" value={selected.capacityHuman} sub={`depth ${selected.depth}`} />
           <Tile label="Runway after" value={fmtDays(selected.runwayDaysAfter)} sub="at the resulting burn" />
         </div>
@@ -442,13 +444,13 @@ function Wizard({ state, onDone }: { state: State; onDone: () => void }) {
             {window.map((q) => (
               <div key={q.depth}
                 className={`bar-row ${q.depth === depth ? 'is-selected' : 'is-dim'}`}
-                title={`depth ${q.depth} · ${q.capacityHuman} · ${q.costBzz.toFixed(3)} BZZ`}>
+                title={`depth ${q.depth} · ${q.capacityHuman} · ${q.costBzz.toFixed(3)} ${TOKEN}`}>
                 <span className="mono secondary" style={{ fontSize: 12 }}>d{q.depth}</span>
                 <span className="bar-track">
                   <span className="bar-fill" style={{ width: `${Math.max(1, (q.costBzz / max) * 100)}%` }} />
                 </span>
                 <span className="mono" style={{ fontSize: 12, minWidth: 92, textAlign: 'right' }}>
-                  {q.costBzz.toFixed(3)} BZZ
+                  {q.costBzz.toFixed(3)} {TOKEN}
                 </span>
               </div>
             ))}
@@ -460,14 +462,14 @@ function Wizard({ state, onDone }: { state: State; onDone: () => void }) {
         <input type="text" placeholder="label (e.g. pinkchainsaw)" value={label}
           onChange={(e) => setLabel(e.target.value)} />
         <button className={arm ? '' : 'primary'} disabled={busy || !selected?.affordable} onClick={doBuy}>
-          {busy ? 'Buying…' : arm ? `Confirm — spend ${arm.costBzz.toFixed(3)} BZZ` : 'Buy batch'}
+          {busy ? 'Buying…' : arm ? `Confirm — spend ${arm.costBzz.toFixed(3)} ${TOKEN}` : 'Buy batch'}
         </button>
         {arm && <button onClick={() => setArm(null)} disabled={busy}>Cancel</button>}
       </div>
       {arm && !busy && (
         <div className="warn">
           Buying <strong>depth {arm.depth}</strong> ({selected?.capacityHuman}) for <strong>{arm.days} days</strong>
-          {' '}at <strong>{arm.costBzz.toFixed(3)} BZZ</strong>
+          {' '}at <strong>{arm.costBzz.toFixed(3)} {TOKEN}</strong>
           {state.fiat && ` (≈ $${(arm.costBzz * state.fiat.usd).toFixed(2)})`}
           {label ? <> · label <strong>{label}</strong></> : ' · no label'}.
           {' '}Depth and immutability cannot be changed after purchase. Click confirm to spend.

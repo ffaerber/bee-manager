@@ -16,6 +16,18 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
+/**
+ * The ticker shown for every on-chain amount.
+ *
+ * The node is on Gnosis, so its wallet, its batch costs and every cap are
+ * denominated in xBZZ — mainnet BZZ bridged 1:1 via Omnibridge — exactly as the
+ * gas balance beside it is xDAI rather than DAI. The only place "BZZ" is correct
+ * on its own is the market quote, which prices the underlying asset.
+ *
+ * Defined once so the two cannot drift apart again.
+ */
+export const TOKEN = 'xBZZ';
+
 export interface Batch {
   batchID: string; label: string; depth: number; batchTTL: number; ttlDays: number;
   utilizationRatio: number; usable: boolean; immutableFlag: boolean;

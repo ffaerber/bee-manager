@@ -270,7 +270,7 @@ export function createServer(deps: ServerDeps) {
             if (label) db.setAppBatch(label, batchId);
             await alerter.send({
               event: 'batch_bought', level: 'info', batchId, costBzz: q.costBzz,
-              message: `Bought depth-${depth} batch "${label ?? ''}" for ${days}d — ${q.costBzz.toFixed(3)} BZZ`,
+              message: `Bought depth-${depth} batch "${label ?? ''}" for ${days}d — ${q.costBzz.toFixed(3)} xBZZ`,
             });
             return json({ batchId, cost: q });
           } catch (e: any) {

@@ -42,18 +42,18 @@ export function checkCaps(cost: bigint, ctx: EvalContext): CapVerdict {
   if (cost <= 0n) return { allowed: false, reason: 'computed cost was zero' };
 
   if (cost > c.maxTopupPlurPerBatch) {
-    return { allowed: false, reason: `costs ${bzz(cost)} BZZ, over the ${bzz(c.maxTopupPlurPerBatch)} BZZ per-action cap` };
+    return { allowed: false, reason: `costs ${bzz(cost)} xBZZ, over the ${bzz(c.maxTopupPlurPerBatch)} xBZZ per-action cap` };
   }
   if (ctx.spentLast24h + cost > c.maxTopupPlurPerDay) {
     return {
       allowed: false,
-      reason: `would bring 24h spend to ${bzz(ctx.spentLast24h + cost)} BZZ, over the ${bzz(c.maxTopupPlurPerDay)} BZZ daily cap`,
+      reason: `would bring 24h spend to ${bzz(ctx.spentLast24h + cost)} xBZZ, over the ${bzz(c.maxTopupPlurPerDay)} xBZZ daily cap`,
     };
   }
   if (wallet.bzzBalance - cost < c.minWalletPlur) {
     return {
       allowed: false,
-      reason: `would leave ${bzz(wallet.bzzBalance - cost)} BZZ, under the ${bzz(c.minWalletPlur)} BZZ floor`,
+      reason: `would leave ${bzz(wallet.bzzBalance - cost)} xBZZ, under the ${bzz(c.minWalletPlur)} xBZZ floor`,
     };
   }
   if (wallet.nativeTokenBalance < c.minWalletXdaiWei) {
@@ -62,7 +62,7 @@ export function checkCaps(cost: bigint, ctx: EvalContext): CapVerdict {
       reason: `xDAI balance ${(Number(wallet.nativeTokenBalance) / 1e18).toFixed(3)} is under the gas floor — the transaction would not land`,
     };
   }
-  return { allowed: true, reason: `within caps (${bzz(cost)} BZZ)` };
+  return { allowed: true, reason: `within caps (${bzz(cost)} xBZZ)` };
 }
 
 /** Plan a single batch. */

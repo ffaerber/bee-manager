@@ -159,14 +159,14 @@ export function depthLadder(
 export function reviewQuote(q: Quote, neededBytes: bigint, walletPlur: bigint): string[] {
   const warnings: string[] = [];
   if (!q.affordable) {
-    warnings.push(`Costs ${q.costBzz.toFixed(2)} BZZ but the wallet holds ${plurToBzz(walletPlur).toFixed(2)} BZZ.`);
+    warnings.push(`Costs ${q.costBzz.toFixed(2)} xBZZ but the wallet holds ${plurToBzz(walletPlur).toFixed(2)} xBZZ.`);
   }
   if (neededBytes > 0n) {
     const ratio = Number(q.capacityBytes) / Number(neededBytes);
     if (ratio > 50) {
       warnings.push(
         `This batch is ${Math.round(ratio)}x larger than the ${formatBytes(neededBytes)} currently stored. ` +
-        `Depth ${q.depth - 2} would cost about ${(q.costBzz / 4).toFixed(2)} BZZ instead of ${q.costBzz.toFixed(2)} BZZ.`,
+        `Depth ${q.depth - 2} would cost about ${(q.costBzz / 4).toFixed(2)} xBZZ instead of ${q.costBzz.toFixed(2)} xBZZ.`,
       );
     }
   }
