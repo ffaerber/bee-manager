@@ -42,6 +42,15 @@ export interface ServerDeps {
   price?: PriceFeed;
 }
 
+/**
+ * Ceiling on a dashboard upload.
+ *
+ * Not a quota — the admin is trusted — just a guard so a mis-picked file
+ * cannot buffer something enormous into memory, and a reminder that each
+ * upload permanently consumes batch capacity.
+ */
+const MAX_ADMIN_UPLOAD_BYTES = 32 * 1024 * 1024;
+
 /** bigint is not JSON-serialisable; render as string to preserve exactness. */
 const json = (v: unknown) => JSON.parse(JSON.stringify(v, (_k, x) => (typeof x === 'bigint' ? x.toString() : x)));
 
@@ -173,6 +182,42 @@ export function createServer(deps: ServerDeps) {
         })
 
         .get('/batches', () => json(db.batches()))
+
+        /**
+         * Upload straight to one batch, from the dashboard.
+         *
+         * Unlike /api/apps/* this is not quota'd per app — it is the admin
+         * acting directly on a batch they picked. It still spends real,
+         * unrecoverable capacity: stamps consumed cannot be reclaimed, and on
+         * an immutable batch the bucket slots are gone for the batch's life.
+         * It also publishes: anything uploaded is retrievable by anyone
+         * holding the reference. The UI says both things next to the button.
+         */
+        .post('/batches/:id/upload', async ({ params, request, query, set }) => {
+          const b = poller.last?.batches.find((x) => x.batchID === params.id);
+          if (!b) { set.status = 404; return { error: 'unknown batch' }; }
+          if (!b.usable) { set.status = 409; return { error: 'batch is not usable' }; }
+
+          const bytes = new Uint8Array(await request.arrayBuffer());
+          if (bytes.byteLength === 0) { set.status = 400; return { error: 'empty body' }; }
+          if (bytes.byteLength > MAX_ADMIN_UPLOAD_BYTES) {
+            set.status = 413;
+            return { error: `upload is ${formatBytes(BigInt(bytes.byteLength))}, over the ${formatBytes(BigInt(MAX_ADMIN_UPLOAD_BYTES))} limit` };
+          }
+
+          const name = typeof query.name === 'string' ? query.name : undefined;
+          try {
+            const reference = await bee.upload(params.id, bytes, {
+              name,
+              contentType: request.headers.get('content-type') ?? 'application/octet-stream',
+            });
+            db.recordUpload(`admin:${b.label || params.id.slice(0, 8)}`, 'dashboard', bytes.byteLength, reference);
+            return json({ reference, bytes: bytes.byteLength, name: name ?? null });
+          } catch (e: any) {
+            set.status = 502;
+            return { error: e?.message ?? String(e) };
+          }
+        })
 
         /**
          * Per-bucket occupancy for one batch — the data behind the grid.

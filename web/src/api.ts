@@ -71,6 +71,13 @@ export interface BucketGrid {
 }
 
 export const getBuckets = (id: string) => req<BucketGrid>(`/batches/${id}/buckets`);
+
+/** Upload a file straight to one batch. Consumes capacity and publishes. */
+export const uploadToBatch = (id: string, file: File) =>
+  req<{ reference: string; bytes: number; name: string | null }>(
+    `/batches/${id}/upload?name=${encodeURIComponent(file.name)}`,
+    { method: 'POST', body: file, headers: { 'content-type': file.type || 'application/octet-stream' } },
+  );
 export const getState = () => req<State>('/state');
 export const getActions = () => req<Action[]>('/actions?limit=25');
 export const getLadder = (days: number, storedBytes?: string) =>

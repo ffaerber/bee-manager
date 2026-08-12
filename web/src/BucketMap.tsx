@@ -18,7 +18,7 @@
  * away — a lone full bin stays visible, which is exactly the case that matters.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as api from './api';
 import type { BucketGrid } from './api';
 import { decodeGrid, fillColor, readPalette } from './mapColors';
@@ -33,13 +33,47 @@ export function BucketMap({ batchId, isAmbient, onAmbient }: {
   const [hover, setHover] = useState<{ x: number; y: number; id: number; count: number } | null>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const wrap = useRef<HTMLDivElement>(null);
+  const filePick = useRef<HTMLInputElement>(null);
   // Bumped by the theme observer to force a redraw with the new ramp.
   const [theme, setTheme] = useState(0);
+  const [uploading, setUploading] = useState(false);
+  const [uploaded, setUploaded] = useState<
+    { name: string; bytes: number; reference: string; newChunks: number } | null>(null);
+
+  const load = useCallback(async () => {
+    const d = await api.getBuckets(batchId);
+    setData(d);
+    return d;
+  }, [batchId]);
 
   useEffect(() => {
-    setData(null); setErr(null);
-    api.getBuckets(batchId).then(setData).catch((e) => setErr(e.message));
-  }, [batchId]);
+    setData(null); setErr(null); setUploaded(null);
+    load().catch((e) => setErr(e.message));
+  }, [batchId, load]);
+
+  /**
+   * Upload, then re-read the buckets so the new cells appear immediately.
+   *
+   * The chunk delta is measured rather than derived from the file size: Swarm
+   * adds intermediate chunks for the Merkle tree above the data chunks, so
+   * bytes/4096 always understates what a file actually costs in slots.
+   */
+  async function onFile(file: File) {
+    setUploading(true); setErr(null); setUploaded(null);
+    const before = data?.totalChunks ?? 0;
+    try {
+      const r = await api.uploadToBatch(batchId, file);
+      const after = await load();
+      setUploaded({
+        name: file.name, bytes: r.bytes, reference: r.reference,
+        newChunks: Math.max(0, after.totalChunks - before),
+      });
+    } catch (e: any) {
+      setErr(e.message);
+    }
+    setUploading(false);
+    if (filePick.current) filePick.current.value = '';
+  }
 
   /** Decoded fill bytes, one per bucket. */
   const fills = useMemo(() => {
@@ -157,6 +191,35 @@ export function BucketMap({ batchId, isAmbient, onAmbient }: {
             style={data.pressure.level === 'good'
               ? { borderLeftColor: 'var(--good)', background: 'transparent' } : undefined}>
             {data.pressure.message}
+          </div>
+
+          <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+            <div className="row">
+              <input ref={filePick} type="file" style={{ display: 'none' }}
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); }} />
+              <button className="primary" disabled={uploading}
+                onClick={() => filePick.current?.click()}>
+                {uploading ? 'Uploading…' : 'Upload a file'}
+              </button>
+              <span className="muted" style={{ fontSize: 12 }}>
+                Stamps it with this batch and fills buckets — watch the grid change.
+              </span>
+            </div>
+            {/* Both of these are irreversible, and neither is obvious from a
+                file picker, so they are stated where the choice is made. */}
+            <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+              Uploaded data is public — anyone with the reference can fetch it — and the
+              stamps it consumes cannot be reclaimed
+              {data.immutable ? ', and this batch is immutable, so those bucket slots are gone for its lifetime.' : '.'}
+            </p>
+            {uploaded && (
+              <div className="warn" style={{ borderLeftColor: 'var(--good)', background: 'transparent' }}>
+                Uploaded <strong>{uploaded.name}</strong> ({fmtBytes(uploaded.bytes)}) —{' '}
+                <strong>{uploaded.newChunks.toLocaleString()}</strong> new chunk{uploaded.newChunks === 1 ? '' : 's'}.
+                <br />
+                <code style={{ fontSize: 11, wordBreak: 'break-all' }}>{uploaded.reference}</code>
+              </div>
+            )}
           </div>
 
           {onAmbient && (
