@@ -123,10 +123,13 @@ export default function App() {
 function Overview({ state }: { state: State }) {
   const runway = state.runwayDays;
   const sev = runway < 30 ? 'critical' : runway < 90 ? 'warning' : 'good';
-  /** Sub-line for a tile, e.g. "≈ $8.27". Absent when there is no quote. */
-  const fiat = (bzz: number | undefined, suffix = '') => {
+  /**
+   * Fiat sub-line, e.g. "≈ $8.27". No period suffix: the tile's label already
+   * says whether the figure is a balance or a rate.
+   */
+  const fiat = (bzz: number | undefined) => {
     const usd = usdOf(bzz, state.fiat);
-    return usd == null ? undefined : `≈ $${usd < 10 ? usd.toFixed(2) : Math.round(usd).toLocaleString()}${suffix}`;
+    return usd == null ? undefined : `≈ $${usd < 10 ? usd.toFixed(2) : Math.round(usd).toLocaleString()}`;
   };
   return (
     <div className="card">
@@ -143,11 +146,13 @@ function Overview({ state }: { state: State }) {
         </div>
       </div>
       <div className="tiles">
-        <Tile label="Wallet" value={`${state.wallet?.bzz.toFixed(2) ?? '—'}`} sub={TOKEN}
+        <Tile label="Wallet" value={`${state.wallet?.bzz.toFixed(2) ?? '—'}`} unit={TOKEN}
           fiat={fiat(state.wallet?.bzz)} />
-        <Tile label="Gas" value={`${state.wallet?.xdai.toFixed(2) ?? '—'}`} sub="xDAI" />
-        <Tile label="Burn rate" value={state.burnPer30DaysBzz.toFixed(2)} sub={`${TOKEN} per 30 days`}
-          fiat={fiat(state.burnPer30DaysBzz, '/mo')} />
+        <Tile label="Gas" value={`${state.wallet?.xdai.toFixed(2) ?? '—'}`} unit="xDAI" />
+        {/* "per 30 days", not "per month": the figure is literally a 30-day
+            rate, and a calendar month averages 30.44 days. */}
+        <Tile label="Burn rate per 30 days" value={state.burnPer30DaysBzz.toFixed(2)} unit={TOKEN}
+          fiat={fiat(state.burnPer30DaysBzz)} />
         <Tile label="Batches" value={String(state.batches.length)} sub={`block time ${(state.msPerBlock / 1000).toFixed(2)}s`} />
       </div>
       {state.fiat && <PriceNote fiat={state.fiat} />}
@@ -184,11 +189,23 @@ function PriceNote({ fiat }: { fiat: NonNullable<State['fiat']> }) {
   );
 }
 
-function Tile({ label, value, sub, fiat }: { label: string; value: string; sub?: string; fiat?: string }) {
+/**
+ * A stat tile: label, then the number with its unit, then at most one sub-line.
+ *
+ * The unit sits inline with the value rather than on its own line because a
+ * bare number stacked above a unit reads as two facts. The period belongs in
+ * the label ("Burn rate per 30 days"), never repeated in the unit and the fiat
+ * line — stating it three ways was what made this tile hard to read.
+ */
+function Tile({ label, value, unit, sub, fiat }: {
+  label: string; value: string; unit?: string; sub?: string; fiat?: string;
+}) {
   return (
     <div>
       <div className="tile-label">{label}</div>
-      <div className="tile-value">{value}</div>
+      <div className="tile-value">
+        {value}{unit && <span className="tile-unit">{unit}</span>}
+      </div>
       {sub && <div className="tile-sub">{sub}</div>}
       {fiat && <div className="tile-sub" style={{ opacity: 0.75 }}>{fiat}</div>}
     </div>
@@ -419,9 +436,10 @@ function Wizard({ state, onDone }: { state: State; onDone: () => void }) {
 
       {selected && (
         <div className="tiles" style={{ marginTop: 20 }}>
-          <Tile label="Cost now" value={selected.costBzz.toFixed(3)} sub={TOKEN}
+          <Tile label="Cost to buy" value={selected.costBzz.toFixed(3)} unit={TOKEN}
             fiat={state.fiat ? `≈ $${(selected.costBzz * state.fiat.usd).toFixed(2)}` : undefined} />
-          <Tile label="To keep alive" value={selected.costPer30DaysBzz.toFixed(3)} sub={`${TOKEN} per 30 days`} />
+          <Tile label="Upkeep per 30 days" value={selected.costPer30DaysBzz.toFixed(3)} unit={TOKEN}
+            fiat={state.fiat ? `≈ $${(selected.costPer30DaysBzz * state.fiat.usd).toFixed(2)}` : undefined} />
           <Tile label="Capacity" value={selected.capacityHuman} sub={`depth ${selected.depth}`} />
           <Tile label="Runway after" value={fmtDays(selected.runwayDaysAfter)} sub="at the resulting burn" />
         </div>

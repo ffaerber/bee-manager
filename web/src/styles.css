@@ -88,6 +88,9 @@ h2 { font-size: 14px; color: var(--text-secondary); letter-spacing: 0.02em; }
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
 .tile-label { color: var(--text-secondary); font-size: 12px; margin-bottom: 4px; }
 .tile-value { font-size: 24px; font-weight: 600; }
+/* Inline with the value, but recessive — the number is the fact, the ticker
+   only qualifies it. Mirrors .hero-unit at tile scale. */
+.tile-unit { font-size: 13px; font-weight: 400; color: var(--text-secondary); margin-left: 5px; }
 .tile-sub { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
 
 table { width: 100%; border-collapse: collapse; }
