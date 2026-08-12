@@ -31,6 +31,16 @@ export interface ActionRow {
   error: string | null;
 }
 
+/** One stored upload, enough to find and fetch the content again. */
+export interface UploadRow {
+  id: number;
+  ts: number;
+  bytes: number;
+  reference: string;
+  name: string | null;
+  contentType: string | null;
+}
+
 export interface AppRow {
   name: string;
   policy: 'ephemeral' | 'permanent';
@@ -126,6 +136,18 @@ export class Db {
     if (!cols.some((c) => c.name === 'managed')) {
       this.db.exec(`ALTER TABLE batches ADD COLUMN managed INTEGER NOT NULL DEFAULT 1`);
     }
+
+    // `uploads` began as pure quota accounting — how many bytes, by whom — so
+    // it never recorded WHICH batch stamped the data or what the file was
+    // called. Without that a reference is unusable: you cannot find the thing
+    // you uploaded, which defeats having uploaded it. Added by the same
+    // idempotent pattern, all nullable so existing rows stay valid.
+    const ucols = this.db.query(`PRAGMA table_info(uploads)`).all() as any[];
+    const has = (n: string) => ucols.some((c) => c.name === n);
+    if (!has('batch_id')) this.db.exec(`ALTER TABLE uploads ADD COLUMN batch_id TEXT`);
+    if (!has('name')) this.db.exec(`ALTER TABLE uploads ADD COLUMN name TEXT`);
+    if (!has('content_type')) this.db.exec(`ALTER TABLE uploads ADD COLUMN content_type TEXT`);
+    this.db.exec(`CREATE INDEX IF NOT EXISTS idx_uploads_batch_ts ON uploads (batch_id, ts DESC)`);
   }
 
   close() { this.db.close(); }
@@ -329,10 +351,36 @@ export class Db {
 
   // ── uploads / quota accounting ───────────────────────────────────────
 
-  recordUpload(appName: string, address: string, bytes: number, reference: string | null, now = Date.now()) {
+  recordUpload(
+    appName: string,
+    address: string,
+    bytes: number,
+    reference: string | null,
+    meta: { batchId?: string; name?: string; contentType?: string } = {},
+    now = Date.now(),
+  ) {
     this.db.query(
-      `INSERT INTO uploads (ts, app_name, address, bytes, reference) VALUES (?, ?, ?, ?, ?)`,
-    ).run(now, appName, address.toLowerCase(), bytes, reference);
+      `INSERT INTO uploads (ts, app_name, address, bytes, reference, batch_id, name, content_type)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(now, appName, address.toLowerCase(), bytes, reference,
+          meta.batchId ?? null, meta.name ?? null, meta.contentType ?? null);
+  }
+
+  /**
+   * What has been uploaded with a batch, newest first.
+   *
+   * Rows with no reference are skipped: an upload that never returned one
+   * cannot be fetched back, so listing it would offer a link to nothing.
+   * Rows predating the batch_id column simply do not appear under any batch —
+   * they were only ever quota accounting and never carried the information.
+   */
+  uploadsForBatch(batchId: string, limit = 100): UploadRow[] {
+    return this.db.query(
+      `SELECT id, ts, bytes, reference, name, content_type AS contentType
+       FROM uploads
+       WHERE batch_id = ?1 AND reference IS NOT NULL
+       ORDER BY ts DESC LIMIT ?2`,
+    ).all(batchId, limit) as UploadRow[];
   }
 
   /** Bytes uploaded in the trailing window, optionally scoped to an address. */

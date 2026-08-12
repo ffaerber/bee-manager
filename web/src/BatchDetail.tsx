@@ -12,7 +12,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as api from './api';
-import type { BucketGrid, State } from './api';
+import type { BucketGrid, State, Upload } from './api';
 import { decodeGrid } from './mapColors';
 import { MapCanvas, type Hover } from './MapCanvas';
 import { link } from './router';
@@ -29,6 +29,7 @@ export function BatchDetail({ batchId, state }: { batchId: string; state: State 
   const [uploading, setUploading] = useState(false);
   const [uploaded, setUploaded] = useState<
     { name: string; bytes: number; reference: string; newChunks: number } | null>(null);
+  const [uploads, setUploads] = useState<Upload[]>([]);
   const filePick = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -37,6 +38,12 @@ export function BatchDetail({ batchId, state }: { batchId: string; state: State 
     setFills(decodeGrid(d.grid));
     return d;
   }, [batchId]);
+
+  const loadUploads = useCallback(() => {
+    api.getUploads(batchId).then(setUploads).catch(() => { /* the map still works without the list */ });
+  }, [batchId]);
+
+  useEffect(() => { loadUploads(); }, [loadUploads]);
 
   useEffect(() => {
     setData(null); setFills(null); setErr(null); setUploaded(null);
@@ -68,6 +75,7 @@ export function BatchDetail({ batchId, state }: { batchId: string; state: State 
     try {
       const r = await api.uploadToBatch(batchId, file);
       const after = await load();
+      loadUploads();
       setUploaded({
         name: file.name, bytes: r.bytes, reference: r.reference,
         newChunks: Math.max(0, after.totalChunks - before),
@@ -170,6 +178,31 @@ export function BatchDetail({ batchId, state }: { batchId: string; state: State 
               )}
             </div>
 
+            {uploads.length > 0 && (
+              <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+                <h2 style={{ marginBottom: 10 }}>Uploaded with this batch</h2>
+                <div className="scroll-x">
+                  <table>
+                    <thead>
+                      <tr><th>File</th><th className="num">Size</th><th>When</th><th>Reference</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                      {uploads.map((u) => <UploadRow key={u.id} u={u} />)}
+                    </tbody>
+                  </table>
+                </div>
+                {/* Says plainly what the list is and is not: a local index of
+                    what this dashboard uploaded, not a listing of the batch.
+                    Swarm has no way to enumerate a batch's contents — only the
+                    references you kept can be fetched back. */}
+                <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+                  Recorded by this monitor when the upload happened. Swarm cannot list a batch's
+                  contents, so anything uploaded by other means is not here — and a reference that
+                  is lost is lost, even though the data is still stored and still paid for.
+                </p>
+              </div>
+            )}
+
             {data.totalChunks > 0 && (
               <p className="muted" style={{ fontSize: 12, marginTop: 12 }}>
                 Occupying {((data.usedBuckets / (1 << data.bucketDepth)) * 100).toFixed(2)}% of buckets
@@ -189,6 +222,72 @@ export function BatchDetail({ batchId, state }: { batchId: string; state: State 
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * One stored upload.
+ *
+ * View and Download both pull through the authenticated content proxy — the
+ * Bee node is not publicly reachable, and a link cannot carry the admin token.
+ * Object URLs are revoked once handed over so a long session does not retain
+ * every file it has looked at.
+ */
+function UploadRow({ u }: { u: Upload }) {
+  const [busy, setBusy] = useState<'view' | 'download' | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  async function open(mode: 'view' | 'download') {
+    setBusy(mode); setErr(null);
+    try {
+      const url = await api.fetchContent(u.reference);
+      if (mode === 'view') {
+        window.open(url, '_blank', 'noopener');
+      } else {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = u.name || `${u.reference.slice(0, 12)}.bin`;
+        a.click();
+      }
+      // The tab or the download has taken its own copy by now.
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (e: any) { setErr(e.message); }
+    setBusy(null);
+  }
+
+  return (
+    <tr>
+      <td>{u.name || <span className="muted">unnamed</span>}
+        {err && <div className="warn err" style={{ fontSize: 12, marginTop: 4 }}>{err}</div>}
+      </td>
+      <td className="num mono">{fmtBytes(u.bytes)}</td>
+      <td className="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+        {new Date(u.ts).toLocaleString()}
+      </td>
+      <td>
+        <button className="reflink" title={u.reference}
+          onClick={() => {
+            navigator.clipboard?.writeText(u.reference).then(() => {
+              setCopied(true); setTimeout(() => setCopied(false), 1500);
+            }).catch(() => { /* clipboard blocked; the title attribute still shows it */ });
+          }}>
+          {copied ? 'copied' : `${u.reference.slice(0, 10)}…`}
+        </button>
+      </td>
+      <td>
+        <div className="row" style={{ gap: 6, flexWrap: 'nowrap' }}>
+          <button style={{ padding: '4px 10px', fontSize: 12 }}
+            disabled={busy !== null} onClick={() => open('view')}>
+            {busy === 'view' ? '…' : 'view'}
+          </button>
+          <button style={{ padding: '4px 10px', fontSize: 12 }}
+            disabled={busy !== null} onClick={() => open('download')}>
+            {busy === 'download' ? '…' : 'download'}
+          </button>
+        </div>
+      </td>
+    </tr>
   );
 }
 

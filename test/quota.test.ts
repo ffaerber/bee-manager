@@ -70,7 +70,7 @@ describe('per-address limits', () => {
 
   it('forgets usage older than the window', () => {
     const now = Date.now();
-    db.recordUpload(app.name, ADDR, 8 * MB, 'r', now - 25 * 3_600_000);
+    db.recordUpload(app.name, ADDR, 8 * MB, 'r', {}, now - 25 * 3_600_000);
     expect(checkQuota(db, app, ADDR, 1 * MB, limits, now).allowed).toBe(true);
   });
 });

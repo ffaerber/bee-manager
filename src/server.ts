@@ -211,13 +211,51 @@ export function createServer(deps: ServerDeps) {
               name,
               contentType: request.headers.get('content-type') ?? 'application/octet-stream',
             });
-            db.recordUpload(`admin:${b.label || params.id.slice(0, 8)}`, 'dashboard', bytes.byteLength, reference);
+            db.recordUpload(`admin:${b.label || params.id.slice(0, 8)}`, 'dashboard', bytes.byteLength, reference, {
+              batchId: params.id,
+              name,
+              contentType: request.headers.get('content-type') ?? undefined,
+            });
             return json({ reference, bytes: bytes.byteLength, name: name ?? null });
           } catch (e: any) {
             set.status = 502;
             return { error: e?.message ?? String(e) };
           }
         })
+
+        /**
+         * Fetch uploaded content back through the monitor.
+         *
+         * The Bee node is not reachable from outside, so a stored reference is
+         * only useful if something here can retrieve it. Reads cost nothing and
+         * touch no stamp — this is a proxy, not a second upload path.
+         */
+        .get('/content/:ref', async ({ params, query, set }) => {
+          if (!/^[0-9a-fA-F]{64,128}$/.test(params.ref)) {
+            set.status = 400; return { error: 'not a swarm reference' };
+          }
+          try {
+            const res = await bee.raw(`/bzz/${params.ref}`);
+            const name = typeof query.name === 'string' ? query.name : null;
+            const headers: Record<string, string> = {
+              'content-type': res.headers.get('content-type') ?? 'application/octet-stream',
+            };
+            // Only when asked: without this the browser renders images and text
+            // inline, which is what you want for a quick look.
+            if (query.download != null && name) {
+              headers['content-disposition'] = `attachment; filename="${name.replace(/["\r\n]/g, '')}"`;
+            }
+            set.status = res.status;
+            return new Response(res.body, { status: res.status, headers });
+          } catch (e: any) {
+            set.status = 502;
+            return { error: e?.message ?? String(e) };
+          }
+        })
+
+        /** What has been uploaded with this batch, newest first. */
+        .get('/batches/:id/uploads', ({ params, query }) =>
+          json(db.uploadsForBatch(params.id, Math.min(500, Number(query.limit ?? 100))))) 
 
         /**
          * Per-bucket occupancy for one batch — the data behind the grid.
@@ -441,7 +479,11 @@ export function createServer(deps: ServerDeps) {
           indexDocument: (headers['swarm-index-document'] as string) || undefined,
           errorDocument: (headers['swarm-error-document'] as string) || undefined,
         });
-        db.recordUpload(app.name, auth.address, bytes.byteLength, reference);
+        db.recordUpload(app.name, auth.address, bytes.byteLength, reference, {
+          batchId: app.batchId,
+          name: (headers['x-filename'] as string) || undefined,
+          contentType: (headers['x-content-type'] as string) || undefined,
+        });
         db.setAppReference(app.name, reference);
         return json({ reference, bytes: bytes.byteLength, remaining: verdict.remaining });
       } catch (e: any) {

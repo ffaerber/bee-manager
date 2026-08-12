@@ -128,7 +128,10 @@ export function createBeeApi({ bee, db, poller, adminToken }: BeeApiDeps) {
             errorDocument: headers['swarm-error-document'],
           })
         : await bee.uploadBytes(app.batchId, bytes, headers['content-type'] ?? 'application/octet-stream');
-      db.recordUpload(app.name, 'api-key', bytes.byteLength, reference);
+      db.recordUpload(app.name, 'api-key', bytes.byteLength, reference, {
+        batchId: app.batchId,
+        contentType: headers['content-type'],
+      });
       db.setAppReference(app.name, reference);
       return { reference };
     } catch (e: any) {

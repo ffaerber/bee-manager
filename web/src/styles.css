@@ -265,3 +265,11 @@ input[type='text'], input[type='number'] {
 .rowlink:hover, .backlink:hover { text-decoration: underline; }
 .backlink { font-size: 13px; }
 tr:hover .rowlink { text-decoration: underline; }
+
+/* Reference chip: looks like a value, behaves like a copy button. */
+.reflink {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px; padding: 3px 8px; border-radius: 6px;
+  background: transparent; border: 1px solid var(--border); color: var(--text-secondary);
+}
+.reflink:hover { color: var(--text-primary); border-color: var(--baseline); }

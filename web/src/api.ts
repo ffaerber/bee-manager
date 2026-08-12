@@ -72,6 +72,25 @@ export interface BucketGrid {
 
 export const getBuckets = (id: string) => req<BucketGrid>(`/batches/${id}/buckets`);
 
+/** One stored upload for a batch. */
+export interface Upload {
+  id: number; ts: number; bytes: number;
+  reference: string; name: string | null; contentType: string | null;
+}
+export const getUploads = (id: string) => req<Upload[]>(`/batches/${id}/uploads`);
+
+/**
+ * Fetch uploaded content back, authenticated.
+ *
+ * A plain <a href> cannot carry the admin token, so content is pulled with
+ * fetch and handed to the browser as an object URL. Callers must revoke it.
+ */
+export async function fetchContent(reference: string): Promise<string> {
+  const res = await fetch(`/api/admin/content/${reference}`, { headers: { 'x-admin-token': getToken() } });
+  if (!res.ok) throw new Error(`could not fetch content (HTTP ${res.status})`);
+  return URL.createObjectURL(await res.blob());
+}
+
 /** Upload a file straight to one batch. Consumes capacity and publishes. */
 export const uploadToBatch = (id: string, file: File) =>
   req<{ reference: string; bytes: number; name: string | null }>(
