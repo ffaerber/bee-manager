@@ -20,6 +20,24 @@ export function Modal({ title, onClose, children }: {
 }) {
   const ref = useRef<HTMLDialogElement>(null);
 
+  /**
+   * The close handler is held in a ref so the effect below can run exactly
+   * once, on mount.
+   *
+   * Depending on `onClose` directly closed the dialog on its own. Parents pass
+   * an inline arrow, so every parent re-render — the dashboard re-polls every
+   * 30s — produced a new function identity, re-running the effect. Its cleanup
+   * called close(), and `close()` *queues* the close event rather than firing
+   * it synchronously, so that event arrived after the re-run had already
+   * attached a fresh listener. The listener could not tell the stale close
+   * from a real one and reported it as a user dismissal.
+   *
+   * Keeping the callback in a ref means the effect never has a reason to
+   * re-run, so there is no teardown to be misread.
+   */
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; });
+
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -27,18 +45,18 @@ export function Modal({ title, onClose, children }: {
 
     // Escape fires the dialog's own close event; React state has to follow it,
     // or the component stays mounted with a closed dialog and cannot reopen.
-    const onCancel = () => onClose();
-    el.addEventListener('close', onCancel);
+    const onDialogClose = () => onCloseRef.current();
+    el.addEventListener('close', onDialogClose);
 
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
 
     return () => {
-      el.removeEventListener('close', onCancel);
+      el.removeEventListener('close', onDialogClose);
       document.body.style.overflow = prev;
       if (el.open) el.close();
     };
-  }, [onClose]);
+  }, []);
 
   /**
    * A click on the backdrop targets the dialog element itself, since the
