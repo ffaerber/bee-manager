@@ -92,6 +92,29 @@ h2 { font-size: 14px; color: var(--text-secondary); letter-spacing: 0.02em; }
    only qualifies it. Mirrors .hero-unit at tile scale. */
 .tile-unit { font-size: 13px; font-weight: 400; color: var(--text-secondary); margin-left: 5px; }
 
+/* ── modal ──────────────────────────────────────────────────────────────
+   The element is the sizing box, so width/max-height live here and the body
+   scrolls inside it. Padding is zero so the backdrop click test stays exact:
+   any padding would be part of the dialog and read as an outside click. */
+.modal {
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  width: min(720px, calc(100vw - 32px));
+  max-height: calc(100vh - 64px);
+  overflow: hidden;
+}
+.modal::backdrop { background: rgb(0 0 0 / 0.55); }
+.modal-body { display: flex; flex-direction: column; max-height: calc(100vh - 64px); }
+.modal-head {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; background: var(--surface-1); z-index: 1;
+}
+.modal-content { padding: 16px; overflow-y: auto; }
+
 /* Hover readout for the bucket map. Positioned against the canvas wrapper and
    never intercepting the pointer, or it would fight the mousemove it exists to
    report on. */

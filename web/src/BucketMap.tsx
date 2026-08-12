@@ -37,7 +37,7 @@ function cssVar(el: Element, name: string, fallback: string): string {
   return v || fallback;
 }
 
-export function BucketMap({ batchId, onClose }: { batchId: string; onClose: () => void }) {
+export function BucketMap({ batchId }: { batchId: string }) {
   const [data, setData] = useState<BucketGrid | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [hover, setHover] = useState<{ x: number; y: number; id: number; count: number } | null>(null);
@@ -132,18 +132,15 @@ export function BucketMap({ batchId, onClose }: { batchId: string; onClose: () =
     // Recover an approximate count from the drawn fill. The exact totals in the
     // stats line come from raw counts server-side; this is per-bucket detail.
     const count = Math.round((fills[id] / 255) * data.bucketUpperBound);
-    setHover({ x: e.clientX - r.left, y: e.clientY - r.top, id, count });
+    // Keep the readout inside the canvas: near the right edge it flips to the
+    // left of the cursor rather than overflowing the modal's scroll box.
+    const px = e.clientX - r.left;
+    const flip = px > r.width - 150;
+    setHover({ x: flip ? px - 138 : px + 12, y: e.clientY - r.top, id, count });
   }
 
   return (
-    <div className="card" style={{ marginTop: 12 }}>
-      <div className="spread" style={{ marginBottom: 12 }}>
-        <h3 style={{ margin: 0 }}>
-          Bucket map{data?.label ? ` — ${data.label}` : ''}
-        </h3>
-        <button onClick={onClose}>Close</button>
-      </div>
-
+    <div>
       {err && <div className="warn err">{err}</div>}
       {!data && !err && <p className="muted">Reading 65,536 buckets…</p>}
 
@@ -156,7 +153,7 @@ export function BucketMap({ batchId, onClose }: { batchId: string; onClose: () =
             not when the average does.
           </p>
 
-          <div ref={wrap} style={{ position: 'relative', maxWidth: 512 }}>
+          <div ref={wrap} style={{ position: 'relative', maxWidth: 560, margin: '0 auto' }}>
             <canvas
               ref={canvas}
               onMouseMove={onMove}
@@ -168,9 +165,7 @@ export function BucketMap({ batchId, onClose }: { batchId: string; onClose: () =
               }}
             />
             {hover && (
-              <div className="tooltip" style={{
-                left: Math.min(hover.x + 12, 380), top: hover.y + 12,
-              }}>
+              <div className="tooltip" style={{ left: hover.x, top: hover.y + 12 }}>
                 bucket {hover.id.toLocaleString()}<br />
                 {hover.count} / {data.bucketUpperBound} stamps
               </div>

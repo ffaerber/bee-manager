@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import { TOKEN } from './api';
 import { BucketMap } from './BucketMap';
+import { Modal } from './Modal';
 import type { Batch, Ladder, Quote, State, Action } from './api';
 
 const DAY = 86_400;
@@ -216,8 +217,9 @@ function Tile({ label, value, unit, sub, fiat }: {
 function Batches({ state, onChange }: { state: State; onChange: () => void }) {
   const threshold = state.config.topupWhenTtlBelowDays;
   // At most one map open: they are 65,536 cells each and the point is to study
-  // one batch, not to tile five.
-  const [mapFor, setMapFor] = useState<string | null>(null);
+  // one batch, not to tile five. The label comes from the row rather than the
+  // fetch so the modal has a title before the data lands.
+  const [mapFor, setMapFor] = useState<{ id: string; label: string } | null>(null);
   return (
     <div className="card">
       <h2 style={{ marginBottom: 12 }}>Batches</h2>
@@ -234,14 +236,19 @@ function Batches({ state, onChange }: { state: State; onChange: () => void }) {
             <tbody>
               {state.batches.map((b) => (
                 <BatchRow key={b.batchID} b={b} threshold={threshold} onChange={onChange}
-                  mapOpen={mapFor === b.batchID}
-                  onToggleMap={() => setMapFor(mapFor === b.batchID ? null : b.batchID)} />
+                  mapOpen={mapFor?.id === b.batchID}
+                  onToggleMap={() => setMapFor(mapFor?.id === b.batchID ? null : { id: b.batchID, label: b.label })} />
               ))}
             </tbody>
           </table>
         </div>
       )}
-      {mapFor && <BucketMap batchId={mapFor} onClose={() => setMapFor(null)} />}
+      {mapFor && (
+        <Modal title={`Bucket map — ${mapFor.label || mapFor.id.slice(0, 12) + '…'}`}
+          onClose={() => setMapFor(null)}>
+          <BucketMap batchId={mapFor.id} />
+        </Modal>
+      )}
       <Plans plans={state.plans} batches={state.batches} />
     </div>
   );
