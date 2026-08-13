@@ -27,6 +27,8 @@ export interface EvalContext {
   inFlight: Set<string>;
   /** Measured block time; falls back to the Gnosis nominal when absent. */
   msPerBlock?: number;
+  /** Per-batch policy overrides, by batch id. Absent entries use the globals. */
+  policies?: Map<string, BatchPolicy>;
 }
 
 /** A cap check, separated so it can be reported even when it passes. */
@@ -103,8 +105,33 @@ export function checkCaps(cost: bigint, ctx: EvalContext): CapVerdict {
 }
 
 /** Plan a single batch. */
+/**
+ * The settings in force for one batch: its own overrides, else the globals.
+ *
+ * Resolved per evaluation rather than copied onto the batch when it is first
+ * seen, so changing a global default moves every batch that has not explicitly
+ * opted out — which is what "default" should mean.
+ */
+export function policyFor(c: Config, o?: BatchPolicy | null) {
+  return {
+    topupWhenTtlBelowSec: (o?.topupBelowDays ?? c.topupWhenTtlBelowSec / 86_400) * 86_400,
+    topupTargetTtlSec: (o?.topupTargetDays ?? c.topupTargetTtlSec / 86_400) * 86_400,
+    diluteWhenUtilizationAbove: o?.diluteAbove ?? c.diluteWhenUtilizationAbove,
+    maxAutoDiluteDepth: o?.maxDiluteDepth ?? c.maxAutoDiluteDepth,
+  };
+}
+
+/** Per-batch overrides; any null field inherits the global. */
+export interface BatchPolicy {
+  topupBelowDays: number | null;
+  topupTargetDays: number | null;
+  diluteAbove: number | null;
+  maxDiluteDepth: number | null;
+}
+
 export function evaluateBatch(batch: Batch, ctx: EvalContext): Plan {
   const c = ctx.config;
+  const p = policyFor(c, ctx.policies?.get(batch.batchID));
   const id = batch.batchID;
 
   if (ctx.inFlight.has(id)) {
@@ -120,20 +147,20 @@ export function evaluateBatch(batch: Batch, ctx: EvalContext): Plan {
   const needsDilute =
     c.diluteEnabled &&
     !batch.immutableFlag &&
-    batch.depth < c.maxAutoDiluteDepth &&
-    batch.utilizationRatio >= diluteTriggerFor(batch.depth, c.diluteWhenUtilizationAbove);
+    batch.depth < p.maxAutoDiluteDepth &&
+    batch.utilizationRatio >= diluteTriggerFor(batch.depth, p.diluteWhenUtilizationAbove);
 
   if (needsDilute) {
     const newDepth = batch.depth + 1;
     // After dilution the same amount covers 2x the chunks, halving TTL.
     const ttlAfter = Math.floor(batch.batchTTL / 2);
-    const seconds = Math.max(0, c.topupTargetTtlSec - ttlAfter);
+    const seconds = Math.max(0, p.topupTargetTtlSec - ttlAfter);
     const perChunk = amountForDuration(ctx.chain.currentPrice, seconds, ctx.msPerBlock);
     const cost = costPlur(perChunk, newDepth);
     const verdict = checkCaps(cost, ctx);
     const why =
-      `${(batch.utilizationRatio * 100).toFixed(1)}% full (over ${(c.diluteWhenUtilizationAbove * 100).toFixed(0)}%), ` +
-      `diluting to depth ${newDepth} then restoring TTL to ${c.topupTargetTtlSec / 86400}d`;
+      `${(batch.utilizationRatio * 100).toFixed(1)}% full (over ${(p.diluteWhenUtilizationAbove * 100).toFixed(0)}%), ` +
+      `diluting to depth ${newDepth} then restoring TTL to ${p.topupTargetTtlSec / 86400}d`;
     if (!verdict.allowed) {
       return { kind: 'blocked', batchId: id, reason: `${why} — ${verdict.reason}`, wouldHaveCost: cost };
     }
@@ -143,17 +170,17 @@ export function evaluateBatch(batch: Batch, ctx: EvalContext): Plan {
   if (batch.batchTTL <= 0) {
     return { kind: 'none', batchId: id, reason: 'batch has already expired — a new batch is needed, not a top-up' };
   }
-  if (batch.batchTTL >= c.topupWhenTtlBelowSec) {
+  if (batch.batchTTL >= p.topupWhenTtlBelowSec) {
     const days = (batch.batchTTL / 86400).toFixed(1);
-    return { kind: 'none', batchId: id, reason: `${days}d remaining, above the ${c.topupWhenTtlBelowSec / 86400}d threshold` };
+    return { kind: 'none', batchId: id, reason: `${days}d remaining, above the ${p.topupWhenTtlBelowSec / 86400}d threshold` };
   }
 
-  const seconds = c.topupTargetTtlSec - batch.batchTTL;
+  const seconds = p.topupTargetTtlSec - batch.batchTTL;
   const perChunk = amountForDuration(ctx.chain.currentPrice, seconds, ctx.msPerBlock);
   const cost = costPlur(perChunk, batch.depth);
   const why =
-    `${(batch.batchTTL / 86400).toFixed(1)}d remaining, below the ${c.topupWhenTtlBelowSec / 86400}d threshold; ` +
-    `extending to ${c.topupTargetTtlSec / 86400}d`;
+    `${(batch.batchTTL / 86400).toFixed(1)}d remaining, below the ${p.topupWhenTtlBelowSec / 86400}d threshold; ` +
+    `extending to ${p.topupTargetTtlSec / 86400}d`;
 
   const verdict = checkCaps(cost, ctx);
   if (!verdict.allowed) {

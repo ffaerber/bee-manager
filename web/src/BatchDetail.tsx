@@ -122,6 +122,7 @@ export function BatchDetail({ batchId, state, onChange }: {
         {err && <div className="warn err">{err}</div>}
 
         {batch && <BatchFacts b={batch} state={state!} onChange={onChange} />}
+        {batch?.managed && <Policy b={batch} onChange={onChange} />}
 
         {!data && !err && <div className="card"><p className="muted">Reading 65,536 buckets…</p></div>}
 
@@ -363,6 +364,89 @@ function BatchFacts({ b, state, onChange }: {
           }}>
           {copied ? 'copied' : b.batchID}
         </button>
+      </div>
+
+      {err && <div className="warn err" style={{ fontSize: 12 }}>{err}</div>}
+    </div>
+  );
+}
+
+/**
+ * Per-batch policy.
+ *
+ * Only shown for managed batches, because none of it applies otherwise — an
+ * unmanaged batch is never topped up or diluted at all.
+ *
+ * Empty means "follow the global", and the placeholder shows what that
+ * currently resolves to. Storing a copy of the global instead would silently
+ * freeze the batch at whatever the default was the day it was first seen, so
+ * changing the service default would stop reaching it.
+ */
+function Policy({ b, onChange }: { b: Batch; onChange: () => void | Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  const eff = b.effective;
+  const fields: {
+    key: keyof typeof b.policy; label: string; hint: string;
+    globalValue: number; step?: string; min?: string; max?: string;
+  }[] = [
+    { key: 'topupBelowDays', label: 'Top up when life falls below', hint: 'days',
+      globalValue: eff.topupWhenTtlBelowSec / 86_400, min: '1' },
+    { key: 'topupTargetDays', label: 'Top up to', hint: 'days — the size of each top-up',
+      globalValue: eff.topupTargetTtlSec / 86_400, min: '2' },
+    { key: 'diluteAbove', label: 'Dilute when fullest bucket exceeds', hint: '0–1, e.g. 0.9',
+      globalValue: eff.diluteWhenUtilizationAbove, step: '0.05', min: '0.1', max: '1' },
+    { key: 'maxDiluteDepth', label: 'Never auto-dilute past depth', hint: 'depth ceiling',
+      globalValue: eff.maxAutoDiluteDepth, min: '17', max: '41' },
+  ];
+
+  async function save(key: keyof typeof b.policy, raw: string) {
+    const value = raw.trim() === '' ? null : Number(raw);
+    if (value !== null && !Number.isFinite(value)) return;
+    setBusy(true); setErr(null); setSaved(false);
+    try {
+      await api.patchBatch(b.batchID, { [key]: value } as any);
+      await onChange();
+      setSaved(true); setTimeout(() => setSaved(false), 1500);
+    } catch (e: any) { setErr(e.message); }
+    setBusy(false);
+  }
+
+  return (
+    <div className="card">
+      <div className="spread" style={{ marginBottom: 10 }}>
+        <h2>Policy for this batch</h2>
+        {saved && <span className="status good">saved</span>}
+      </div>
+      <p className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
+        Leave a field empty to follow the service default, shown greyed. A value here overrides it
+        for this batch only.
+      </p>
+
+      <div className="tiles">
+        {fields.map((f) => (
+          <div key={f.key}>
+            <div className="tile-label">{f.label}</div>
+            <input
+              type="number" disabled={busy}
+              defaultValue={b.policy[f.key] ?? ''}
+              placeholder={String(f.globalValue)}
+              step={f.step} min={f.min} max={f.max}
+              onBlur={(e) => {
+                const cur = b.policy[f.key];
+                const next = e.target.value.trim() === '' ? null : Number(e.target.value);
+                if (next !== cur) save(f.key, e.target.value);
+              }}
+              onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+              style={{ width: '100%', padding: '4px 6px', fontSize: 14 }}
+            />
+            <div className="tile-sub">
+              {b.policy[f.key] === null ? `default ${f.globalValue}` : `overridden · ${f.hint}`}
+            </div>
+          </div>
+        ))}
       </div>
 
       {err && <div className="warn err" style={{ fontSize: 12 }}>{err}</div>}

@@ -181,6 +181,14 @@ export class Poller {
       spentLast24h: this.db.spentLast24h(now),
       inFlight: this.db.inFlightBatchIds(),
       msPerBlock: this.msPerBlock,
+      // Read fresh each tick so an override takes effect on the next cycle
+      // rather than at the next restart.
+      policies: new Map(this.db.batches().map((b) => [b.batchId, {
+        topupBelowDays: b.topupBelowDays,
+        topupTargetDays: b.topupTargetDays,
+        diluteAbove: b.diluteAbove,
+        maxDiluteDepth: b.maxDiluteDepth,
+      }])),
     };
     const plans = evaluateAll(managedBatches, ctx);
     for (const plan of plans) await this.handle(plan, batches);

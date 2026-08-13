@@ -32,6 +32,19 @@ export interface Batch {
   batchID: string; label: string; depth: number; batchTTL: number; ttlDays: number;
   utilizationRatio: number; usable: boolean; immutableFlag: boolean;
   storedHuman: string; capacityHuman: string; managed: boolean;
+  /** Stored overrides; null means this batch follows the global setting. */
+  policy: BatchPolicy;
+  /** What is actually in force once the globals are applied. */
+  effective: {
+    topupWhenTtlBelowSec: number; topupTargetTtlSec: number;
+    diluteWhenUtilizationAbove: number; maxAutoDiluteDepth: number;
+  };
+}
+export interface BatchPolicy {
+  topupBelowDays: number | null;
+  topupTargetDays: number | null;
+  diluteAbove: number | null;
+  maxDiluteDepth: number | null;
 }
 export interface State {
   ok: boolean; error: string | null; msPerBlock: number;
@@ -117,7 +130,10 @@ export const getActions = () => req<Action[]>('/actions?limit=25');
 export const getLadder = (days: number, storedBytes?: string) =>
   req<Ladder>(`/wizard/ladder?days=${days}${storedBytes ? `&storedBytes=${storedBytes}` : ''}`);
 export const poll = () => req<unknown>('/poll', { method: 'POST' });
-export const patchBatch = (id: string, patch: { label?: string; managed?: boolean }) =>
+export const patchBatch = (
+  id: string,
+  patch: { label?: string; managed?: boolean } & Partial<BatchPolicy>,
+) =>
   req<unknown>(`/batches/${id}`, { method: 'PATCH', body: JSON.stringify(patch) });
 export const buy = (b: { depth: number; days: number; label?: string; immutable?: boolean; confirm?: boolean }) =>
   req<any>('/wizard/buy', { method: 'POST', body: JSON.stringify(b) });

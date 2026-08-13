@@ -26,7 +26,7 @@ import { authenticate, sha256Hex, safeEqual } from './auth';
 import { checkQuota, limitsFor } from './quota';
 import { burnRate, quote, depthLadder, recommendDepth, reviewQuote, formatBytes, MIN_DEPTH, MAX_DEPTH } from './wizard';
 import { plurToBzz, bzzToPlur, storedBytes, capacityBytes, costPlur, amountForDuration } from './math';
-import { checkCaps } from './evaluate';
+import { checkCaps, policyFor } from './evaluate';
 import type { Config } from './config';
 import { PriceFeed } from './price';
 import { buildGrid, bucketPressure } from './buckets';
@@ -102,15 +102,28 @@ export function createServer(deps: ServerDeps) {
           // fail this response in any meaningful way.
           const price = await price$.get();
           const unmanaged = db.unmanagedBatchIds();
-          const batches = r.batches.map((b) => ({
+          const rows = new Map(db.batches().map((x) => [x.batchId, x]));
+          const batches = r.batches.map((b) => {
+            const row = rows.get(b.batchID);
+            return ({
             ...b,
             managed: !unmanaged.has(b.batchID),
+            /** Overrides as stored: null means this batch follows the global. */
+            policy: {
+              topupBelowDays: row?.topupBelowDays ?? null,
+              topupTargetDays: row?.topupTargetDays ?? null,
+              diluteAbove: row?.diluteAbove ?? null,
+              maxDiluteDepth: row?.maxDiluteDepth ?? null,
+            },
+            /** What is actually in force, after falling back to the globals. */
+            effective: policyFor(cfg, row ?? null),
             storedBytes: storedBytes(b.utilizationRatio, b.depth).toString(),
             capacityBytes: capacityBytes(b.depth).toString(),
             storedHuman: formatBytes(storedBytes(b.utilizationRatio, b.depth)),
             capacityHuman: formatBytes(capacityBytes(b.depth)),
             ttlDays: b.batchTTL / 86_400,
-          }));
+          });
+          });
           return json({
             ok: r.ok,
             error: r.error ?? null,
@@ -391,10 +404,24 @@ export function createServer(deps: ServerDeps) {
          * the UI suggests it instead.
          */
         .patch('/batches/:id', async ({ params, body, set }) => {
-          const { label, managed } = body as { label?: string; managed?: boolean };
-          if (label === undefined && managed === undefined) {
+          const b = body as {
+            label?: string; managed?: boolean;
+            topupBelowDays?: number | null; topupTargetDays?: number | null;
+            diluteAbove?: number | null; maxDiluteDepth?: number | null;
+          };
+          const { label, managed } = b;
+          const policyKeys = ['topupBelowDays', 'topupTargetDays', 'diluteAbove', 'maxDiluteDepth'] as const;
+          const hasPolicy = policyKeys.some((k) => k in b);
+          if (label === undefined && managed === undefined && !hasPolicy) {
             set.status = 400;
-            return { error: 'provide label, managed, or both' };
+            return { error: 'provide label, managed, or a policy field' };
+          }
+          if (b.topupBelowDays != null && b.topupTargetDays != null
+              && b.topupBelowDays >= b.topupTargetDays) {
+            // Topping up to a target at or below the trigger would re-fire
+            // every cycle, spending on each one.
+            set.status = 400;
+            return { error: 'topupTargetDays must be greater than topupBelowDays' };
           }
           if (!db.batches().some((b) => b.batchId === params.id)) {
             set.status = 404;
@@ -417,12 +444,26 @@ export function createServer(deps: ServerDeps) {
             poller.patchCachedLabel(params.id, label);
           }
           if (managed !== undefined) db.setManaged(params.id, managed);
+          if (hasPolicy) {
+            db.setBatchPolicy(params.id, {
+              topupBelowDays: b.topupBelowDays,
+              topupTargetDays: b.topupTargetDays,
+              diluteAbove: b.diluteAbove,
+              maxDiluteDepth: b.maxDiluteDepth,
+            });
+          }
 
-          return json(db.batches().find((b) => b.batchId === params.id));
+          return json(db.batch(params.id));
         }, {
           body: t.Object({
             label: t.Optional(t.String({ minLength: 1, maxLength: 128 })),
             managed: t.Optional(t.Boolean()),
+            // Null clears an override and returns the batch to the global
+            // setting; omitting the key leaves it untouched.
+            topupBelowDays: t.Optional(t.Union([t.Integer({ minimum: 1, maximum: 3650 }), t.Null()])),
+            topupTargetDays: t.Optional(t.Union([t.Integer({ minimum: 2, maximum: 3650 }), t.Null()])),
+            diluteAbove: t.Optional(t.Union([t.Number({ minimum: 0.1, maximum: 1 }), t.Null()])),
+            maxDiluteDepth: t.Optional(t.Union([t.Integer({ minimum: 17, maximum: 41 }), t.Null()])),
           }),
         })
         .post('/poll', async () => json(await poller.tick()))

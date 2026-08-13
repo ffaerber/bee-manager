@@ -31,6 +31,36 @@ export interface ActionRow {
   error: string | null;
 }
 
+/**
+ * A batch as this service records it, plus any policy overrides.
+ *
+ * Every override is nullable and null means "inherit the global setting".
+ * Storing an explicit copy of the global instead would silently freeze a batch
+ * at whatever the default happened to be on the day it was first seen.
+ */
+export interface BatchRow {
+  batchId: string;
+  label: string;
+  depth: number;
+  managed: boolean;
+  goneAt: number | null;
+  topupBelowDays: number | null;
+  topupTargetDays: number | null;
+  diluteAbove: number | null;
+  maxDiluteDepth: number | null;
+}
+
+function toBatchRow(r: any): BatchRow {
+  return {
+    batchId: r.batch_id, label: r.label, depth: r.depth,
+    managed: r.managed === 1, goneAt: r.gone_at,
+    topupBelowDays: r.topup_below_days ?? null,
+    topupTargetDays: r.topup_target_days ?? null,
+    diluteAbove: r.dilute_above ?? null,
+    maxDiluteDepth: r.max_dilute_depth ?? null,
+  };
+}
+
 /** One stored upload, enough to find and fetch the content again. */
 export interface UploadRow {
   id: number;
@@ -142,6 +172,21 @@ export class Db {
     // called. Without that a reference is unusable: you cannot find the thing
     // you uploaded, which defeats having uploaded it. Added by the same
     // idempotent pattern, all nullable so existing rows stay valid.
+    // Per-batch policy overrides. All nullable: NULL means "use the global
+    // setting", so an existing batch keeps behaving exactly as before and the
+    // global config stays the single place to change the default.
+    for (const col of [
+      'topup_below_days INTEGER',
+      'topup_target_days INTEGER',
+      'dilute_above REAL',
+      'max_dilute_depth INTEGER',
+    ]) {
+      const name = col.split(' ')[0];
+      if (!cols.some((c) => c.name === name)) {
+        this.db.exec(`ALTER TABLE batches ADD COLUMN ${col}`);
+      }
+    }
+
     const ucols = this.db.query(`PRAGMA table_info(uploads)`).all() as any[];
     const has = (n: string) => ucols.some((c) => c.name === n);
     if (!has('batch_id')) this.db.exec(`ALTER TABLE uploads ADD COLUMN batch_id TEXT`);
@@ -201,12 +246,50 @@ export class Db {
     return res.changes > 0;
   }
 
-  batches(): { batchId: string; label: string; depth: number; managed: boolean; goneAt: number | null }[] {
-    return this.db.query(`SELECT batch_id, label, depth, managed, gone_at FROM batches ORDER BY label`)
-      .all().map((r: any) => ({
-        batchId: r.batch_id, label: r.label, depth: r.depth,
-        managed: r.managed === 1, goneAt: r.gone_at,
-      }));
+  batches(): BatchRow[] {
+    return this.db.query(`
+      SELECT batch_id, label, depth, managed, gone_at,
+             topup_below_days, topup_target_days, dilute_above, max_dilute_depth
+      FROM batches ORDER BY label
+    `).all().map(toBatchRow);
+  }
+
+  /** One batch's stored row, including any policy overrides. */
+  batch(batchId: string): BatchRow | null {
+    const r = this.db.query(`
+      SELECT batch_id, label, depth, managed, gone_at,
+             topup_below_days, topup_target_days, dilute_above, max_dilute_depth
+      FROM batches WHERE batch_id = ?1
+    `).get(batchId) as any;
+    return r ? toBatchRow(r) : null;
+  }
+
+  /**
+   * Set or clear per-batch policy.
+   *
+   * `null` clears an override and returns the batch to the global setting —
+   * distinct from `undefined`, which leaves the field untouched. Without that
+   * distinction there would be no way to undo an override.
+   */
+  setBatchPolicy(batchId: string, p: {
+    topupBelowDays?: number | null;
+    topupTargetDays?: number | null;
+    diluteAbove?: number | null;
+    maxDiluteDepth?: number | null;
+  }) {
+    const sets: string[] = [];
+    const vals: any[] = [];
+    const add = (col: string, v: number | null | undefined) => {
+      if (v === undefined) return;
+      sets.push(`${col} = ?`);
+      vals.push(v);
+    };
+    add('topup_below_days', p.topupBelowDays);
+    add('topup_target_days', p.topupTargetDays);
+    add('dilute_above', p.diluteAbove);
+    add('max_dilute_depth', p.maxDiluteDepth);
+    if (!sets.length) return;
+    this.db.query(`UPDATE batches SET ${sets.join(', ')} WHERE batch_id = ?`).run(...vals, batchId);
   }
 
   /** Mark a batch as vanished. Returns false if it was already marked. */
