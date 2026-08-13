@@ -25,7 +25,7 @@ import { createBeeApi } from './beeApi';
 import { authenticate, sha256Hex, safeEqual } from './auth';
 import { checkQuota, limitsFor } from './quota';
 import { burnRate, quote, depthLadder, recommendDepth, reviewQuote, formatBytes, MIN_DEPTH, MAX_DEPTH } from './wizard';
-import { plurToBzz, bzzToPlur, storedBytes, capacityBytes, costPlur } from './math';
+import { plurToBzz, bzzToPlur, storedBytes, capacityBytes, costPlur, amountForDuration } from './math';
 import { checkCaps } from './evaluate';
 import type { Config } from './config';
 import { PriceFeed } from './price';
@@ -242,6 +242,99 @@ export function createServer(deps: ServerDeps) {
             set.status = 502;
             return { error: e?.message ?? String(e) };
           }
+        })
+
+        /**
+         * Dilute a batch: raise its depth, doubling capacity per step.
+         *
+         * The counter-intuitive part, and why this is two-step: dilution does
+         * not add anything. The same per-chunk amount now has to cover twice
+         * as many chunks, so REMAINING LIFE HALVES with each depth step. It
+         * buys room at the cost of time, and topping up first would throw half
+         * the top-up away — which is why the automatic path always dilutes
+         * before it tops up.
+         *
+         * Immutable batches are refused: Bee will not dilute one, and it would
+         * not help anyway, since a full bucket on an immutable batch rejects
+         * writes permanently.
+         */
+        .post('/batches/:id/dilute', async ({ params, body, set }) => {
+          const r = poller.last;
+          if (!r?.ok || !r.chain || !r.wallet) { set.status = 503; return { error: 'no poll data yet' }; }
+          const b = r.batches.find((x) => x.batchID === params.id);
+          if (!b) { set.status = 404; return { error: 'unknown batch' }; }
+
+          const { newDepth, confirm } = body as { newDepth?: number; confirm?: boolean };
+          const target = newDepth ?? b.depth + 1;
+
+          if (b.immutableFlag) {
+            set.status = 409;
+            return { error: 'this batch is immutable and cannot be diluted — only a new batch can give it more room' };
+          }
+          if (target <= b.depth) {
+            set.status = 400;
+            return { error: `depth can only increase; batch is already depth ${b.depth}` };
+          }
+          if (target > MAX_DEPTH) {
+            set.status = 400;
+            return { error: `depth ${target} is above the maximum of ${MAX_DEPTH}` };
+          }
+
+          const steps = target - b.depth;
+          const ttlAfter = Math.floor(b.batchTTL / Math.pow(2, steps));
+          // What it would cost to put back the life dilution removes.
+          const seconds = Math.max(0, cfg.topupTargetTtlSec - ttlAfter);
+          const perChunk = amountForDuration(r.chain.currentPrice, seconds, r.msPerBlock);
+          const restoreCost = costPlur(perChunk, target);
+
+          const preview = {
+            batchId: params.id,
+            fromDepth: b.depth,
+            toDepth: target,
+            capacityBefore: capacityBytes(b.depth).toString(),
+            capacityAfter: capacityBytes(target).toString(),
+            capacityBeforeHuman: formatBytes(capacityBytes(b.depth)),
+            capacityAfterHuman: formatBytes(capacityBytes(target)),
+            ttlDaysBefore: b.batchTTL / 86_400,
+            ttlDaysAfter: ttlAfter / 86_400,
+            restoreToDays: cfg.topupTargetTtlSec / 86_400,
+            restoreCostBzz: plurToBzz(restoreCost),
+            restoreAffordable: restoreCost <= r.wallet.bzzBalance,
+          };
+
+          if (!confirm) return json({ preview, confirmRequired: true });
+
+          if (cfg.dryRun) return json({ dryRun: true, wouldDilute: preview });
+
+          const actionId = db.recordAction({
+            batchId: params.id, appName: null, kind: 'dilute',
+            amount: BigInt(target), cost: 0n, status: 'submitted',
+            reason: `manual dilute ${b.depth} -> ${target}`, error: null,
+          });
+          try {
+            await bee.dilute(params.id, target);
+            db.updateActionStatus(actionId, 'confirmed');
+            // Depth, utilisation and TTL all move together, so re-read rather
+            // than guess — otherwise the page shows the old depth for up to a
+            // full poll interval.
+            await poller.refreshBatch(params.id);
+            return json({ diluted: preview });
+          } catch (e: any) {
+            if (e instanceof BeeIndeterminateError) {
+              // Left as submitted on purpose: the transaction may still land,
+              // and recording it failed would invite a duplicate dilution.
+              set.status = 504;
+              return { error: e.message, indeterminate: true };
+            }
+            db.updateActionStatus(actionId, 'failed', e?.message ?? String(e));
+            set.status = 502;
+            return { error: e?.message ?? String(e) };
+          }
+        }, {
+          body: t.Object({
+            newDepth: t.Optional(t.Integer({ minimum: 17, maximum: 41 })),
+            confirm: t.Optional(t.Boolean()),
+          }),
         })
 
         /** What has been uploaded with this batch, newest first. */

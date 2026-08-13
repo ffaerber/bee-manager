@@ -76,6 +76,17 @@ export interface BucketGrid {
 
 export const getBuckets = (id: string) => req<BucketGrid>(`/batches/${id}/buckets`);
 
+/** Preview of what diluting would do. */
+export interface DilutePreview {
+  batchId: string; fromDepth: number; toDepth: number;
+  capacityBeforeHuman: string; capacityAfterHuman: string;
+  ttlDaysBefore: number; ttlDaysAfter: number;
+  restoreToDays: number; restoreCostBzz: number; restoreAffordable: boolean;
+}
+export const dilute = (id: string, opts: { newDepth?: number; confirm?: boolean }) =>
+  req<{ preview?: DilutePreview; confirmRequired?: boolean; diluted?: DilutePreview; dryRun?: boolean; wouldDilute?: DilutePreview }>(
+    `/batches/${id}/dilute`, { method: 'POST', body: JSON.stringify(opts) });
+
 /** One stored upload for a batch. */
 export interface Upload {
   id: number; ts: number; bytes: number;

@@ -12,7 +12,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as api from './api';
-import type { Batch, BucketGrid, State, Upload } from './api';
+import type { Batch, BucketGrid, DilutePreview, State, Upload } from './api';
 import { decodeGrid } from './mapColors';
 import { MapCanvas, type Hover } from './MapCanvas';
 import { link } from './router';
@@ -218,6 +218,8 @@ export function BatchDetail({ batchId, state, onChange }: {
               </div>
             )}
 
+            {batch && <Dilute b={batch} onDone={async () => { await onChange(); await load(); }} />}
+
             {data.totalChunks > 0 && (
               <p className="muted" style={{ fontSize: 12, marginTop: 12 }}>
                 Occupying {((data.usedBuckets / (1 << data.bucketDepth)) * 100).toFixed(2)}% of buckets
@@ -364,6 +366,102 @@ function BatchFacts({ b, state, onChange }: {
       </div>
 
       {err && <div className="warn err" style={{ fontSize: 12 }}>{err}</div>}
+    </div>
+  );
+}
+
+/**
+ * Dilution: more room, less time.
+ *
+ * The reason this needs explaining rather than just a button — dilution adds
+ * nothing. It re-spreads the amount already paid over twice as many chunk
+ * slots per depth step, so capacity doubles and REMAINING LIFE HALVES. People
+ * reach for it when a batch is filling up and are surprised to find they have
+ * bought space by spending time.
+ *
+ * The preview therefore leads with the TTL loss and what restoring it costs,
+ * and the confirm button spells out both. Two clicks, like buying, because it
+ * cannot be undone: depth only ever increases.
+ */
+function Dilute({ b, onDone }: { b: Batch; onDone: () => Promise<void> }) {
+  const [preview, setPreview] = useState<DilutePreview | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+
+  // A new depth invalidates a pending confirmation.
+  const [steps, setSteps] = useState(1);
+  useEffect(() => { setPreview(null); setDone(null); }, [steps, b.depth]);
+
+  if (b.immutableFlag) {
+    return (
+      <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+        <h2 style={{ marginBottom: 8 }}>Dilute</h2>
+        <p className="muted" style={{ fontSize: 12 }}>
+          Not available: this batch is immutable. Bee will not dilute one, and it would not help —
+          on an immutable batch a full bucket rejects writes permanently. More room means a new batch.
+        </p>
+      </div>
+    );
+  }
+
+  async function go(confirm: boolean) {
+    setBusy(true); setErr(null);
+    try {
+      const r = await api.dilute(b.batchID, { newDepth: b.depth + steps, confirm });
+      if (r.confirmRequired && r.preview) setPreview(r.preview);
+      else if (r.dryRun && r.wouldDilute) {
+        setDone(`DRY_RUN is on — would have diluted to depth ${r.wouldDilute.toDepth}.`);
+        setPreview(null);
+      } else if (r.diluted) {
+        setDone(`Diluted to depth ${r.diluted.toDepth}. Remaining life is now about ${fmtDays(r.diluted.ttlDaysAfter)}.`);
+        setPreview(null);
+        await onDone();
+      }
+    } catch (e: any) { setErr(e.message); }
+    setBusy(false);
+  }
+
+  return (
+    <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+      <h2 style={{ marginBottom: 8 }}>Dilute</h2>
+      <p className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
+        Doubles capacity per depth step and <strong>halves remaining life</strong> — the amount already
+        paid has to cover twice as many chunks. Top up afterwards, not before, or half the top-up is
+        spread thin along with everything else.
+      </p>
+
+      <div className="row">
+        <label className="field" style={{ marginBottom: 0 }}>
+          To depth{' '}
+          <select value={steps} onChange={(e) => setSteps(Number(e.target.value))} disabled={busy}>
+            {[1, 2, 3].map((n) => (
+              <option key={n} value={n}>{b.depth + n} (×{Math.pow(2, n)} capacity, ÷{Math.pow(2, n)} life)</option>
+            ))}
+          </select>
+        </label>
+        <button className={preview ? '' : 'primary'} disabled={busy}
+          onClick={() => go(Boolean(preview))}>
+          {busy ? 'Working…' : preview ? `Confirm — depth ${preview.toDepth}` : 'Preview'}
+        </button>
+        {preview && <button onClick={() => setPreview(null)} disabled={busy}>Cancel</button>}
+      </div>
+
+      {preview && (
+        <div className="warn">
+          Depth <strong>{preview.fromDepth} → {preview.toDepth}</strong>.
+          Capacity {preview.capacityBeforeHuman} → <strong>{preview.capacityAfterHuman}</strong>.
+          Remaining life {fmtDays(preview.ttlDaysBefore)} → <strong>{fmtDays(preview.ttlDaysAfter)}</strong>.
+          <br />
+          Restoring it to {preview.restoreToDays} days afterwards would cost{' '}
+          <strong>{preview.restoreCostBzz.toFixed(3)} xBZZ</strong>
+          {!preview.restoreAffordable && ' — more than the wallet holds'}.
+          {b.managed && ' This batch is managed, so auto top-up will restore it on the next cycle, within the caps.'}
+          {' '}Depth cannot be reduced again.
+        </div>
+      )}
+      {done && <div className="warn" style={{ borderLeftColor: 'var(--good)', background: 'transparent' }}>{done}</div>}
+      {err && <div className="warn err">{err}</div>}
     </div>
   );
 }

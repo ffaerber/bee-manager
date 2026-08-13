@@ -51,6 +51,30 @@ export class Poller {
     if (b) b.label = label;
   }
 
+  /**
+   * Re-read one batch from the node and replace its cached entry.
+   *
+   * For changes that move several fields at once — dilution alters depth,
+   * utilisation and TTL together — patching individual fields would be
+   * guesswork. Reading the one stamp back is authoritative and costs a single
+   * request.
+   *
+   * Still not a full tick, for the same reason patchCachedLabel is not: a tick
+   * runs the evaluate/top-up pass, and a manual operation must not be able to
+   * set off an unrelated spend as a side effect.
+   */
+  async refreshBatch(batchId: string): Promise<void> {
+    if (!this.last) return;
+    try {
+      const fresh = await this.bee.stamp(batchId);
+      const i = this.last.batches.findIndex((x) => x.batchID === batchId);
+      if (i >= 0) this.last.batches[i] = fresh;
+    } catch {
+      // Leave the cache alone: a stale entry beats a missing one, and the next
+      // scheduled poll corrects it regardless.
+    }
+  }
+
   constructor(
     private readonly cfg: Config,
     private readonly bee: BeeClient,
