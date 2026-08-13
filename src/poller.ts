@@ -8,7 +8,7 @@
  * rather than a silent double-spend on the next poll.
  */
 
-import { BeeClient, BeeIndeterminateError, type Batch, type ChainState, type Wallet } from './bee';
+import { BeeClient, BeeIndeterminateError, type Batch, type ChainState, type NodeStatus, type Wallet } from './bee';
 import { Db } from './db';
 import { applySettings } from './settings';
 import { Alerter } from './alerts';
@@ -21,6 +21,16 @@ export interface PollResult {
   batches: Batch[];
   chain?: ChainState;
   wallet?: Wallet;
+  /**
+   * Node health and the money that is NOT in the wallet.
+   *
+   * The chequebook and the stake hold real xBZZ that the wallet figure does not
+   * include, and neither can pay for postage — so showing only the wallet made
+   * the balance look smaller than it is while showing all three without saying
+   * which is spendable would be worse. Best-effort: a node with the chequebook
+   * disabled is still a node worth reporting on.
+   */
+  node?: NodeStatus;
   plans: Plan[];
   msPerBlock: number;
   burnPer30DaysBzz: number;
@@ -208,8 +218,12 @@ export class Poller {
     const plans = evaluateAll(managedBatches, ctx);
     for (const plan of plans) await this.handle(plan, batches);
 
+    // Never fails the poll: this is context, not a decision input, and the
+    // stamps it reports on are already read above.
+    const node = await this.bee.nodeStatus().catch(() => undefined);
+
     this.last = {
-      ok: true, batches, chain, wallet, plans,
+      ok: true, batches, chain, wallet, node, plans,
       msPerBlock: this.msPerBlock,
       burnPer30DaysBzz: plurToBzz(burn),
       runwayDays,

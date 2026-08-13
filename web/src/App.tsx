@@ -4,6 +4,7 @@ import { TOKEN } from './api';
 import { BatchDetail } from './BatchDetail';
 import { batchIdFrom, isSettings, link, usePath } from './router';
 import { Settings } from './Settings';
+import { Wallet } from './Wallet';
 import { fmtDays, ttlSeverity } from './format';
 import { Modal } from './Modal';
 import type { Batch, Ladder, Quote, State, Action } from './api';
@@ -106,6 +107,7 @@ export default function App() {
       )}
 
       <Overview state={state} />
+      <Wallet state={state} />
       <Batches state={state} onChange={load} />
       <Actions actions={actions} />
     </div>
@@ -140,14 +142,18 @@ function Overview({ state }: { state: State }) {
         </div>
       </div>
       <div className="tiles">
-        <Tile label="Wallet" value={`${state.wallet?.bzz.toFixed(2) ?? '—'}`} unit={TOKEN}
-          fiat={fiat(state.wallet?.bzz)} />
-        <Tile label="Gas" value={`${state.wallet?.xdai.toFixed(2) ?? '—'}`} unit="xDAI" />
+        {/* Balances live in the wallet card below; repeating them here made
+            two places to read the same number and disagree about it. */}
         {/* "per 30 days", not "per month": the figure is literally a 30-day
             rate, and a calendar month averages 30.44 days. */}
         <Tile label="Burn rate per 30 days" value={state.burnPer30DaysBzz.toFixed(2)} unit={TOKEN}
           fiat={fiat(state.burnPer30DaysBzz)} />
-        <Tile label="Batches" value={String(state.batches.length)} sub={`block time ${(state.msPerBlock / 1000).toFixed(2)}s`} />
+        <Tile label="Batches" value={String(state.batches.length)}
+          sub={`${state.batches.filter((b) => b.managed).length} managed`} />
+        <Tile label="Node" value={state.node?.peers != null ? String(state.node.peers) : '—'}
+          sub={state.node?.version ? `peers · ${state.node.version.split('-')[0]}` : 'peers'} />
+        <Tile label="Block time" value={(state.msPerBlock / 1000).toFixed(2)} unit="s"
+          sub="measured, not assumed" />
       </div>
       {state.fiat && <PriceNote fiat={state.fiat} />}
     </div>

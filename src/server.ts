@@ -135,6 +135,18 @@ export function createServer(deps: ServerDeps) {
               bzz: plurToBzz(r.wallet.bzzBalance),
               xdai: Number(r.wallet.nativeTokenBalance) / 1e18,
               address: r.wallet.walletAddress,
+              chainId: r.wallet.chainID,
+              chequebookAddress: r.wallet.chequebookContractAddress,
+              /** Held in the chequebook for bandwidth — NOT spendable on postage. */
+              chequebookBzz: r.node?.chequebookBalance != null ? plurToBzz(r.node.chequebookBalance) : null,
+              chequebookAvailableBzz: r.node?.chequebookAvailable != null ? plurToBzz(r.node.chequebookAvailable) : null,
+              /** Locked in the staking contract — also not spendable on postage. */
+              stakedBzz: r.node?.stakedAmount != null ? plurToBzz(r.node.stakedAmount) : null,
+            },
+            node: r.node && {
+              healthy: r.node.healthy, version: r.node.version,
+              beeMode: r.node.beeMode, peers: r.node.peers ?? null,
+              storageRadius: r.node.storageRadius ?? null,
             },
             chain: r.chain && { block: r.chain.block, price: r.chain.currentPrice.toString() },
             /** Fiat quote for BZZ, or null when unavailable. Never used in any calculation that spends. */

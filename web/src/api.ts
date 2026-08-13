@@ -49,7 +49,16 @@ export interface BatchPolicy {
 export interface State {
   ok: boolean; error: string | null; msPerBlock: number;
   burnPer30DaysBzz: number; runwayDays: number;
-  wallet?: { bzz: number; xdai: number; address: string };
+  wallet?: {
+    bzz: number; xdai: number; address: string;
+    chainId: number; chequebookAddress: string;
+    /** Held in the chequebook / staking contract — real xBZZ, but not spendable on postage. */
+    chequebookBzz: number | null; chequebookAvailableBzz: number | null; stakedBzz: number | null;
+  };
+  node?: {
+    healthy: boolean; version?: string; beeMode?: string;
+    peers: number | null; storageRadius: number | null;
+  };
   chain?: { block: number; price: string };
   /** Display-only fiat quote; null/absent whenever the price feed is off or unreachable. */
   fiat?: { usd: number; eur: number; usd24hChange: number; fetchedAt: number } | null;
