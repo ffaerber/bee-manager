@@ -18,17 +18,26 @@ const reachable = (depth: number) => {
 };
 
 describe('diluteTriggerFor', () => {
-  it('is reachable before full at every depth we run', () => {
-    for (const depth of [17, 18, 19, 20, 22, 24, 28]) {
+  it('is reachable before full at every depth where early warning is possible', () => {
+    for (const depth of [19, 20, 22, 24, 28]) {
       const trigger = diluteTriggerFor(depth, 0.8);
       const before = reachable(depth).filter((v) => v < 1 && v >= trigger);
       expect(before.length).toBeGreaterThan(0);
     }
   });
 
-  it('fires with one slot left on shallow batches', () => {
-    expect(diluteTriggerFor(17, 0.8)).toBe(0.5);   // 1 of 2
-    expect(diluteTriggerFor(18, 0.8)).toBe(0.75);  // 3 of 4
+  it('does NOT fire early on very shallow batches', () => {
+    // bucketUpperBound 2 and 4. "One slot left" there is 0.5 and 0.75, which a
+    // batch holding one or three chunks already reads — it would dilute an
+    // essentially empty batch, then again at each new depth, halving life
+    // every time. These wait for a genuinely full bucket instead.
+    expect(diluteTriggerFor(17, 0.8)).toBe(1);
+    expect(diluteTriggerFor(18, 0.8)).toBe(1);
+  });
+
+  it('fires with one slot left once buckets are big enough to mean it', () => {
+    expect(diluteTriggerFor(19, 0.8)).toBe(0.8);    // 7/8 = 0.875 clears it
+    expect(diluteTriggerFor(20, 0.8)).toBe(0.8);
   });
 
   it('keeps the configured threshold where it is the tighter bound', () => {
@@ -40,15 +49,15 @@ describe('diluteTriggerFor', () => {
 
   it('follows a changed threshold', () => {
     expect(diluteTriggerFor(24, 0.5)).toBe(0.5);
-    // Still capped by one-slot-left when that is tighter.
-    expect(diluteTriggerFor(17, 0.9)).toBe(0.5);
+    // Shallow batches ignore it: they wait for a full bucket regardless.
+    expect(diluteTriggerFor(17, 0.9)).toBe(1);
   });
 
   it('never sits above the highest sub-full reading', () => {
     // The trigger itself need not be a reachable value — the comparison is
     // `>=`, so at depth 19 a trigger of 0.8 is met by the reachable 0.875.
     // What must hold is that some reading below 1.0 clears it.
-    for (const depth of [17, 18, 19, 20, 22, 24, 28]) {
+    for (const depth of [19, 20, 22, 24, 28]) {
       const highestBeforeFull = Math.max(...reachable(depth).filter((v) => v < 1));
       expect(diluteTriggerFor(depth, 0.8)).toBeLessThanOrEqual(highestBeforeFull);
     }

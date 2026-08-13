@@ -52,7 +52,22 @@ export interface CapVerdict {
  */
 export function diluteTriggerFor(depth: number, configured: number): number {
   const bucketUpperBound = Math.pow(2, Math.max(0, depth - 16));
-  if (bucketUpperBound <= 1) return 1;
+
+  // Below this, "one slot left" means almost nothing: at bucketUpperBound 2 a
+  // bucket holding a SINGLE chunk already reads 0.5, so a batch with one file
+  // in it would dilute immediately, and then again at each new depth — walking
+  // 17->22 would halve remaining life five times and pay for five restoring
+  // top-ups, all while the batch was essentially empty. Shallow batches
+  // therefore trigger only once a bucket is genuinely full.
+  //
+  // That is reactive rather than predictive, and deliberately so: on a mutable
+  // batch a full bucket costs one recycled chunk, which is a far smaller harm
+  // than repeatedly halving the life of a batch that had plenty of room.
+  // Immutable batches never reach here — they are excluded earlier.
+  const MIN_BUCKET_FOR_EARLY_TRIGGER = 8; // depth 19+
+
+  if (bucketUpperBound < MIN_BUCKET_FOR_EARLY_TRIGGER) return 1;
+
   const oneSlotLeft = (bucketUpperBound - 1) / bucketUpperBound;
   return Math.min(configured, oneSlotLeft);
 }

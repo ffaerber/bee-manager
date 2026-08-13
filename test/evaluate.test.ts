@@ -112,17 +112,24 @@ describe('dilution', () => {
     expect(p.kind).toBe('dilute'); // not 'topup', despite TTL also being low
   });
 
-  it('fires before a bucket is full on a shallow batch', () => {
-    // Depth 18 can only read 0, .25, .5, .75, 1. A fixed 0.8 threshold was
-    // unreachable until 1.0 — after a mutable batch had begun discarding its
-    // oldest chunks. 0.75 is one slot from full and must now trigger.
-    const p = evaluateBatch(withTTL(40, { utilizationRatio: 0.75, depth: 18 }), ctx(funded));
+  it('fires before a bucket is full once buckets are big enough', () => {
+    // Depth 19: bucketUpperBound 8, so 0.875 is one slot from full and clears
+    // the 0.8 threshold — genuine early warning.
+    const p = evaluateBatch(withTTL(40, { utilizationRatio: 0.875, depth: 19 }), ctx(funded));
     expect(p.kind).toBe('dilute');
   });
 
-  it('does not fire on a shallow batch that is merely half used', () => {
-    const p = evaluateBatch(withTTL(40, { utilizationRatio: 0.25, depth: 18 }), ctx(funded));
+  it('leaves a barely-used shallow batch alone', () => {
+    // The case that nearly fired in production: depth 17, one chunk in the
+    // fullest bucket, reads 0.5 because bucketUpperBound is 2. Diluting here
+    // would halve the life of a batch with almost nothing in it.
+    const p = evaluateBatch(withTTL(40, { utilizationRatio: 0.5, depth: 17 }), ctx(funded));
     expect(p.kind).not.toBe('dilute');
+  });
+
+  it('still dilutes a shallow batch once a bucket is actually full', () => {
+    const p = evaluateBatch(withTTL(40, { utilizationRatio: 1, depth: 17 }), ctx(funded));
+    expect(p.kind).toBe('dilute');
   });
 
   describe('automatic depth ceiling', () => {
