@@ -351,6 +351,14 @@ export function createServer(deps: ServerDeps) {
           const b = r.batches.find((x) => x.batchID === params.id);
           if (!b) { set.status = 404; return { error: 'unknown batch' }; }
 
+          // Unmanaged means "I am letting this lapse" — the flag exists to say
+          // exactly that. Spending on such a batch is almost always a mistake,
+          // and was one: 63 xBZZ went onto an unmanaged, deliberately expiring
+          // batch because nothing stopped it. Manage it first if you mean it.
+          if (!(db.batch(params.id)?.managed ?? true)) {
+            set.status = 409;
+            return { error: 'this batch is unmanaged — it is set to expire. Mark it managed first if you want to spend on it.' };
+          }
           const { days, confirm } = body as { days?: number; confirm?: boolean };
           const pol = policyFor(cfg, db.batch(params.id));
           const targetDays = days ?? pol.topupTargetTtlSec / 86_400;
@@ -430,6 +438,14 @@ export function createServer(deps: ServerDeps) {
           const b = r.batches.find((x) => x.batchID === params.id);
           if (!b) { set.status = 404; return { error: 'unknown batch' }; }
 
+          // Unmanaged means "I am letting this lapse" — the flag exists to say
+          // exactly that. Spending on such a batch is almost always a mistake,
+          // and was one: 63 xBZZ went onto an unmanaged, deliberately expiring
+          // batch because nothing stopped it. Manage it first if you mean it.
+          if (!(db.batch(params.id)?.managed ?? true)) {
+            set.status = 409;
+            return { error: 'this batch is unmanaged — it is set to expire. Mark it managed first if you want to spend on it.' };
+          }
           const { newDepth, confirm } = body as { newDepth?: number; confirm?: boolean };
           const target = newDepth ?? b.depth + 1;
 

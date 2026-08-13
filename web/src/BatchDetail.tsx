@@ -121,6 +121,11 @@ export function BatchDetail({ batchId, state, onChange }: {
 
         {err && <div className="warn err">{err}</div>}
 
+        {batch && (
+          <Vitals b={batch} data={data} state={state!}
+            onDone={async () => { await onChange(); await load(); }} />
+        )}
+
         {batch && <BatchFacts b={batch} state={state!} onChange={onChange} />}
         {batch?.managed && <Policy b={batch} onChange={onChange} />}
 
@@ -218,9 +223,6 @@ export function BatchDetail({ batchId, state, onChange }: {
                 </p>
               </div>
             )}
-
-            {batch && <Topup b={batch} onDone={async () => { await onChange(); await load(); }} />}
-            {batch && <Dilute b={batch} onDone={async () => { await onChange(); await load(); }} />}
 
             {data.totalChunks > 0 && (
               <p className="muted" style={{ fontSize: 12, marginTop: 12 }}>
@@ -451,6 +453,100 @@ function Policy({ b, onChange }: { b: Batch; onChange: () => void | Promise<void
       </div>
 
       {err && <div className="warn err" style={{ fontSize: 12 }}>{err}</div>}
+    </div>
+  );
+}
+
+/**
+ * The two numbers that decide whether a batch is healthy, and the two actions
+ * that move them.
+ *
+ * Life and room are the whole story: a batch dies when either runs out, and
+ * every other figure on the page is detail underneath. They were below the
+ * bucket statistics, which put the diagnosis under the evidence.
+ *
+ * Each action expands in place rather than linking elsewhere, so the meter it
+ * changes stays on screen while you decide.
+ *
+ * Both are disabled on an unmanaged batch. Unmanaged means "I am letting this
+ * lapse", so spending on it is nearly always a mistake — the API refuses too,
+ * since a greyed-out button is a hint, not a guard.
+ */
+function Vitals({ b, data, state, onDone }: {
+  b: Batch; data: BucketGrid | null; state: State; onDone: () => Promise<void>;
+}) {
+  const [open, setOpen] = useState<'life' | 'room' | null>(null);
+
+  const threshold = b.effective.topupWhenTtlBelowSec / 86_400;
+  const sev = ttlSeverity(b.ttlDays, threshold);
+  const ttlPct = Math.max(2, Math.min(100, (b.ttlDays / 90) * 100));
+
+  // The meter tracks the FULLEST bucket, not the average, because that is what
+  // actually stops a write. Bytes stored are shown underneath as context.
+  const fullPct = Math.max(1, Math.min(100, b.utilizationRatio * 100));
+  const roomSev = b.utilizationRatio >= 1 ? 'critical'
+    : b.utilizationRatio >= b.effective.diluteWhenUtilizationAbove ? 'warning' : 'good';
+
+  return (
+    <div className="card">
+      <div className="vitals">
+        <div>
+          <div className="tile-label">Remaining life</div>
+          <div className="row" style={{ gap: 10, flexWrap: 'nowrap', margin: '4px 0 4px' }}>
+            <span className={`meter ${sev}`} style={{ flex: 1, height: 12 }}>
+              <i style={{ width: `${ttlPct}%` }} />
+            </span>
+            <span style={{ fontSize: 22, fontWeight: 600, minWidth: 74, textAlign: 'right' }}>
+              {fmtDays(b.ttlDays)}
+            </span>
+          </div>
+          <div className="tile-sub">
+            {b.ttlDays > 0 ? `until ${expiryDate(b.ttlDays)}` : 'expired'}
+            {sev === 'warning' && ` · below the ${threshold}d threshold`}
+          </div>
+        </div>
+
+        <div>
+          <div className="tile-label">Capacity used</div>
+          <div className="row" style={{ gap: 10, flexWrap: 'nowrap', margin: '4px 0 4px' }}>
+            <span className={`meter ${roomSev}`} style={{ flex: 1, height: 12 }}>
+              <i style={{ width: `${fullPct}%` }} />
+            </span>
+            <span style={{ fontSize: 22, fontWeight: 600, minWidth: 74, textAlign: 'right' }}>
+              {(b.utilizationRatio * 100).toFixed(1)}%
+            </span>
+          </div>
+          <div className="tile-sub">
+            {data
+              ? `fullest bucket ${data.maxCollisions} of ${data.bucketUpperBound} · ${fmtBytes(data.storedBytes)} stored`
+              : 'fullest bucket — reading…'}
+          </div>
+        </div>
+      </div>
+
+      <div className="row" style={{ marginTop: 14 }}>
+        <button className={open === 'life' ? '' : 'primary'} disabled={!b.managed}
+          onClick={() => setOpen(open === 'life' ? null : 'life')}
+          title={b.managed ? 'Buy more time at the current size' : 'Unmanaged batches are set to expire'}>
+          Extend life
+        </button>
+        <button disabled={!b.managed || b.immutableFlag}
+          onClick={() => setOpen(open === 'room' ? null : 'room')}
+          title={b.immutableFlag ? 'Immutable batches cannot be diluted'
+            : b.managed ? 'More room, at the cost of half the remaining life'
+            : 'Unmanaged batches are set to expire'}>
+          Add capacity
+        </button>
+        {!b.managed && (
+          <span className="muted" style={{ fontSize: 12 }}>
+            This batch is unmanaged — it is set to expire and nothing will renew it.
+            Mark it managed below to spend on it.
+          </span>
+        )}
+      </div>
+
+      {open === 'life' && <Topup b={b} onDone={async () => { await onDone(); setOpen(null); }} />}
+      {open === 'room' && <Dilute b={b} onDone={async () => { await onDone(); setOpen(null); }} />}
     </div>
   );
 }

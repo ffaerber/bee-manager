@@ -273,3 +273,7 @@ tr:hover .rowlink { text-decoration: underline; }
   background: transparent; border: 1px solid var(--border); color: var(--text-secondary);
 }
 .reflink:hover { color: var(--text-primary); border-color: var(--baseline); }
+
+/* The two vitals side by side on a wide screen, stacked on a narrow one. The
+   meters are the point, so they take the width rather than the numbers. */
+.vitals { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }

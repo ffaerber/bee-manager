@@ -9,6 +9,14 @@ A real URL, so it can be bookmarked, shared, or pinned on a wall display.
 ```
  ← Batches   t4t-v3                                        [Hide panel]
 
+┌─ vitals ──────────────────────────────────────────────────────────────┐
+│ Remaining life                    Capacity used                       │
+│ ▓▓▓▓▓▓▓░░░░░  56 d                ▓░░░░░░░░░░░  25.0%                 │
+│ until 8 Oct 2026                  fullest bucket 1 of 4 · 471 KB      │
+│                                                                       │
+│ [Extend life]  [Add capacity]      ← disabled when unmanaged          │
+└───────────────────────────────────────────────────────────────────────┘
+
      ░░▒░░░░▒░░░░░░░░▒░░░░  ← 65,536 buckets, one cell each, full viewport
      ░░░░░▒░░░░░░▒░░░░░░░░    hover any cell for its stamp count
 ┌─ batch facts ─────────────────────────────────────────────────────────┐
@@ -36,6 +44,25 @@ A real URL, so it can be bookmarked, shared, or pinned on a wall display.
 │ ── Uploaded with this batch ──                                        │
 └───────────────────────────────────────────────────────────────────────┘
 ```
+
+## Vitals — the two numbers that matter
+
+Life and room decide whether a batch is healthy: it dies when either runs out,
+and everything else on the page is detail underneath. They sit above the fold,
+each with a meter, and each with the action that moves it.
+
+The capacity meter tracks the **fullest bucket**, not the average, because that
+is what actually stops a write. Bytes stored appear underneath as context.
+
+`Extend life` and `Add capacity` expand in place, so the meter stays on screen
+while you decide. Both are **disabled on an unmanaged batch** — and the API
+refuses too, since a greyed-out button is a hint rather than a guard. Unmanaged
+means the batch is set to expire; spending on it is nearly always a mistake, and
+was one: 63 xBZZ went onto a deliberately expiring depth-24 batch because
+nothing stopped it.
+
+`Add capacity` is additionally disabled on immutable batches, which cannot be
+diluted at all.
 
 ## The map
 
