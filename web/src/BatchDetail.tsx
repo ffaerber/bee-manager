@@ -468,7 +468,18 @@ function Policy({ b, onChange }: { b: Batch; onChange: () => void | Promise<void
  */
 function Topup({ b, onDone }: { b: Batch; onDone: () => Promise<void> }) {
   const targetDefault = Math.round(b.effective.topupTargetTtlSec / 86_400);
-  const [days, setDays] = useState(targetDefault);
+  /**
+   * Two ways to say the same thing, because both are natural depending on why
+   * you are here. "Extend to" matches the automatic path and the policy field;
+   * "add" is what you actually mean when buying a few more days by hand, and
+   * without it you had to work out target = current + n yourself.
+   *
+   * The request is always an absolute target, so a preview stays valid even
+   * though the batch keeps draining between preview and confirm.
+   */
+  const [mode, setMode] = useState<'to' | 'add'>('add');
+  const [amount, setAmount] = useState(30);
+  const days = mode === 'add' ? Math.round(b.ttlDays + amount) : amount;
   const [preview, setPreview] = useState<TopupPreview | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -476,6 +487,16 @@ function Topup({ b, onDone }: { b: Batch; onDone: () => Promise<void> }) {
 
   // A different duration invalidates a pending confirmation.
   useEffect(() => { setPreview(null); setDone(null); }, [days]);
+
+  // Switching mode carries the number across as the equivalent value, so the
+  // figure on screen never silently changes meaning.
+  function switchMode(next: 'to' | 'add') {
+    if (next === mode) return;
+    setAmount(next === 'add'
+      ? Math.max(1, Math.round(amount - b.ttlDays))
+      : Math.round(b.ttlDays + amount));
+    setMode(next);
+  }
 
   async function go(confirm: boolean) {
     setBusy(true); setErr(null);
@@ -499,15 +520,24 @@ function Topup({ b, onDone }: { b: Batch; onDone: () => Promise<void> }) {
       <h2 style={{ marginBottom: 8 }}>Top up</h2>
       <p className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
         Buys more remaining life at the current depth. Capacity is unchanged — cost scales with
-        2<sup>depth</sup>, so a deeper batch costs proportionally more per day.
+        2<sup>depth</sup>, so a deeper batch costs proportionally more per day. Any amount works;
+        there is no minimum beyond extending past what the batch already has.
       </p>
       <div className="row">
         <label className="field" style={{ marginBottom: 0 }}>
-          Extend to{' '}
-          <input type="number" min={Math.ceil(b.ttlDays) + 1} max={3650} value={days} disabled={busy}
-            onChange={(e) => setDays(Number(e.target.value))}
+          <select value={mode} onChange={(e) => switchMode(e.target.value as 'to' | 'add')} disabled={busy}>
+            <option value="add">Add</option>
+            <option value="to">Extend to</option>
+          </select>{' '}
+          <input type="number" min={1} max={3650} value={amount} disabled={busy}
+            onChange={(e) => setAmount(Number(e.target.value))}
             style={{ width: 90, padding: '4px 6px' }} /> days
         </label>
+        <span className="muted" style={{ fontSize: 12 }}>
+          {mode === 'add'
+            ? `${fmtDays(b.ttlDays)} now → ${days} d total`
+            : `${fmtDays(b.ttlDays)} now → adds ${Math.max(0, days - b.ttlDays).toFixed(1)} d`}
+        </span>
         <button className={preview ? '' : 'primary'} disabled={busy || days <= b.ttlDays}
           onClick={() => go(Boolean(preview && preview.allowed))}>
           {busy ? 'Working…' : preview ? (preview.allowed ? `Confirm — spend ${preview.costBzz.toFixed(3)} xBZZ` : 'Blocked') : 'Preview'}
