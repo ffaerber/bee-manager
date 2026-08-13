@@ -3,23 +3,9 @@ import * as api from './api';
 import { TOKEN } from './api';
 import { BatchDetail } from './BatchDetail';
 import { batchIdFrom, link, usePath } from './router';
+import { fmtDays, ttlSeverity } from './format';
 import { Modal } from './Modal';
 import type { Batch, Ladder, Quote, State, Action } from './api';
-
-const DAY = 86_400;
-
-/** Severity for a batch's remaining life, against the configured threshold. */
-function ttlSeverity(days: number, thresholdDays: number): 'good' | 'warning' | 'critical' {
-  if (days <= 0) return 'critical';
-  if (days < thresholdDays) return 'warning';
-  return 'good';
-}
-
-function fmtDays(d: number) {
-  if (!isFinite(d)) return '∞';
-  if (d >= 365) return `${(d / 365).toFixed(1)} yr`;
-  return `${d.toFixed(d < 10 ? 1 : 0)} d`;
-}
 
 export default function App() {
   const [state, setState] = useState<State | null>(null);
@@ -75,7 +61,7 @@ export default function App() {
     );
   }
 
-  if (batchId) return <BatchDetail batchId={batchId} state={state} />;
+  if (batchId) return <BatchDetail batchId={batchId} state={state} onChange={load} />;
 
   if (!state) return <div className="wrap"><p className="muted">Loading…</p></div>;
 

@@ -12,15 +12,18 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as api from './api';
-import type { BucketGrid, State, Upload } from './api';
+import type { Batch, BucketGrid, State, Upload } from './api';
 import { decodeGrid } from './mapColors';
 import { MapCanvas, type Hover } from './MapCanvas';
 import { link } from './router';
+import { expiryDate, fmtBytes, fmtDays, ttlSeverity } from './format';
 
 /** Buckets are re-read on this cadence so a screen left open stays current. */
 const REFRESH_MS = 60_000;
 
-export function BatchDetail({ batchId, state }: { batchId: string; state: State | null }) {
+export function BatchDetail({ batchId, state, onChange }: {
+  batchId: string; state: State | null; onChange: () => void;
+}) {
   const [data, setData] = useState<BucketGrid | null>(null);
   const [fills, setFills] = useState<Uint8Array | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -115,6 +118,9 @@ export function BatchDetail({ batchId, state }: { batchId: string; state: State 
         </div>
 
         {err && <div className="warn err">{err}</div>}
+
+        {batch && <BatchFacts b={batch} state={state!} onChange={onChange} />}
+
         {!data && !err && <div className="card"><p className="muted">Reading 65,536 buckets…</p></div>}
 
         {data && (
@@ -233,6 +239,123 @@ export function BatchDetail({ batchId, state }: { batchId: string; state: State 
 }
 
 /**
+ * The batch's own properties — everything the overview row shows, plus the
+ * things that only fit on a page: the full id, the projected expiry date, and
+ * what the reported utilisation actually means.
+ *
+ * Editable here for the same reason it is editable in the row: this is the page
+ * you are on when you decide a batch needs renaming or retiring.
+ */
+function BatchFacts({ b, state, onChange }: { b: Batch; state: State; onChange: () => void }) {
+  const [label, setLabel] = useState(b.label);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  // Keep in step with the 30s refresh, unless the field is being edited.
+  useEffect(() => { if (!busy) setLabel(b.label); }, [b.label, busy]);
+
+  const threshold = state.config.topupWhenTtlBelowDays;
+  const sev = ttlSeverity(b.ttlDays, threshold);
+
+  async function save(patch: { label?: string; managed?: boolean }) {
+    setBusy(true); setErr(null);
+    try { await api.patchBatch(b.batchID, patch); onChange(); }
+    catch (e: any) { setErr(e.message); setLabel(b.label); }
+    setBusy(false);
+  }
+
+  return (
+    <div className="card">
+      <div className="tiles">
+        <div>
+          <div className="tile-label">Label</div>
+          <input
+            type="text" value={label} disabled={busy}
+            onChange={(e) => setLabel(e.target.value)}
+            onBlur={() => { if (label !== b.label && label.trim()) save({ label: label.trim() }); else setLabel(b.label); }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+              if (e.key === 'Escape') setLabel(b.label);
+            }}
+            style={{ width: '100%', padding: '4px 6px', fontSize: 14 }}
+            title="Renames the batch on the Bee node, so the name survives this database"
+          />
+        </div>
+
+        <div>
+          <div className="tile-label">Remaining life</div>
+          <div className="row" style={{ gap: 8, flexWrap: 'nowrap', marginTop: 2 }}>
+            <span className={`meter ${sev}`} style={{ width: 70 }}>
+              <i style={{ width: `${Math.max(2, Math.min(100, (b.ttlDays / 90) * 100))}%` }} />
+            </span>
+            <span className="mono" style={{ fontWeight: 600 }}>{fmtDays(b.ttlDays)}</span>
+          </div>
+          <div className="tile-sub">
+            {b.ttlDays > 0 ? `until ${expiryDate(b.ttlDays)}` : 'expired'}
+            {sev === 'warning' && ` · below the ${threshold}d threshold`}
+          </div>
+        </div>
+
+        <div>
+          <div className="tile-label">Depth</div>
+          <div className="tile-value" style={{ fontSize: 18 }}>{b.depth}</div>
+          <div className="tile-sub">{b.capacityHuman} nominal</div>
+        </div>
+
+        <div>
+          <div className="tile-label">Managed</div>
+          <button onClick={() => save({ managed: !b.managed })} disabled={busy}
+            style={{ padding: '4px 10px', fontSize: 12, marginTop: 2 }}
+            title={b.managed
+              ? 'Topped up automatically within the caps. Click to leave it alone — it will expire on its own.'
+              : 'Never topped up, and its expiry raises no alert. Click to manage it again.'}>
+            {b.managed ? 'managed' : 'unmanaged'}
+          </button>
+          <div className="tile-sub">
+            {b.managed ? 'auto top-up applies' : 'will lapse silently'}
+          </div>
+        </div>
+
+        <div>
+          <div className="tile-label">Flags</div>
+          <div style={{ fontSize: 14, marginTop: 4 }}>
+            {b.immutableFlag ? 'immutable' : 'mutable'}{b.usable ? '' : ' · unusable'}
+          </div>
+          <div className="tile-sub">
+            {b.immutableFlag
+              ? 'a full bucket rejects writes for good'
+              : 'a full bucket recycles its oldest chunk'}
+          </div>
+        </div>
+
+        <div>
+          <div className="tile-label">Reported utilisation</div>
+          <div className="tile-value" style={{ fontSize: 18 }}>{(b.utilizationRatio * 100).toFixed(2)}%</div>
+          {/* Worth showing despite being coarse: this, not the exact chunk
+              count, is what the dilute decision keys off. */}
+          <div className="tile-sub">quantised — drives the dilute rule</div>
+        </div>
+      </div>
+
+      <div className="row" style={{ marginTop: 12, gap: 8 }}>
+        <span className="tile-label">Batch ID</span>
+        <button className="reflink" title={b.batchID}
+          onClick={() => {
+            navigator.clipboard?.writeText(b.batchID).then(() => {
+              setCopied(true); setTimeout(() => setCopied(false), 1500);
+            }).catch(() => { /* clipboard blocked; the title still shows it */ });
+          }}>
+          {copied ? 'copied' : b.batchID}
+        </button>
+      </div>
+
+      {err && <div className="warn err" style={{ fontSize: 12 }}>{err}</div>}
+    </div>
+  );
+}
+
+/**
  * One stored upload.
  *
  * View and Download both pull through the authenticated content proxy — the
@@ -340,10 +463,4 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
   );
 }
 
-function fmtBytes(n: number): string {
-  if (n === 0) return '0 B';
-  const u = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
-  const i = Math.min(Math.floor(Math.log10(n) / 3), u.length - 1);
-  const v = n / Math.pow(1000, i);
-  return `${v < 10 && i > 0 ? v.toFixed(2) : v < 100 && i > 0 ? v.toFixed(1) : Math.round(v)} ${u[i]}`;
-}
+
