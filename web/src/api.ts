@@ -89,6 +89,15 @@ export interface BucketGrid {
 
 export const getBuckets = (id: string) => req<BucketGrid>(`/batches/${id}/buckets`);
 
+/** Preview of what a manual top-up would do. */
+export interface TopupPreview {
+  batchId: string; fromDays: number; toDays: number;
+  costBzz: number; allowed: boolean; reason: string;
+}
+export const topup = (id: string, opts: { days?: number; confirm?: boolean }) =>
+  req<{ preview?: TopupPreview; confirmRequired?: boolean; toppedUp?: TopupPreview; dryRun?: boolean; wouldTopup?: TopupPreview }>(
+    `/batches/${id}/topup`, { method: 'POST', body: JSON.stringify(opts) });
+
 /** Preview of what diluting would do. */
 export interface DilutePreview {
   batchId: string; fromDepth: number; toDepth: number;

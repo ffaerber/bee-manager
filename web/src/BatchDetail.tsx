@@ -12,7 +12,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as api from './api';
-import type { Batch, BucketGrid, DilutePreview, State, Upload } from './api';
+import type { Batch, BucketGrid, DilutePreview, State, TopupPreview, Upload } from './api';
 import { decodeGrid } from './mapColors';
 import { MapCanvas, type Hover } from './MapCanvas';
 import { link } from './router';
@@ -219,6 +219,7 @@ export function BatchDetail({ batchId, state, onChange }: {
               </div>
             )}
 
+            {batch && <Topup b={batch} onDone={async () => { await onChange(); await load(); }} />}
             {batch && <Dilute b={batch} onDone={async () => { await onChange(); await load(); }} />}
 
             {data.totalChunks > 0 && (
@@ -450,6 +451,81 @@ function Policy({ b, onChange }: { b: Batch; onChange: () => void | Promise<void
       </div>
 
       {err && <div className="warn err" style={{ fontSize: 12 }}>{err}</div>}
+    </div>
+  );
+}
+
+/**
+ * Manual top-up: more time, at the current size.
+ *
+ * The counterpart to dilution — this one buys life and leaves capacity alone.
+ * Defaults to the batch's own target so the button does the same thing the
+ * automatic path would, just now instead of at the threshold.
+ *
+ * Subject to the same caps as the automatic path. Being deliberate does not
+ * make a spend safe to leave unbounded, so the preview reports a block before
+ * the confirm rather than after it.
+ */
+function Topup({ b, onDone }: { b: Batch; onDone: () => Promise<void> }) {
+  const targetDefault = Math.round(b.effective.topupTargetTtlSec / 86_400);
+  const [days, setDays] = useState(targetDefault);
+  const [preview, setPreview] = useState<TopupPreview | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+
+  // A different duration invalidates a pending confirmation.
+  useEffect(() => { setPreview(null); setDone(null); }, [days]);
+
+  async function go(confirm: boolean) {
+    setBusy(true); setErr(null);
+    try {
+      const r = await api.topup(b.batchID, { days, confirm });
+      if (r.confirmRequired && r.preview) setPreview(r.preview);
+      else if (r.dryRun && r.wouldTopup) {
+        setDone(`DRY_RUN is on — would have extended to ${r.wouldTopup.toDays}d.`);
+        setPreview(null);
+      } else if (r.toppedUp) {
+        setDone(`Extended to about ${r.toppedUp.toDays}d for ${r.toppedUp.costBzz.toFixed(3)} xBZZ.`);
+        setPreview(null);
+        await onDone();
+      }
+    } catch (e: any) { setErr(e.message); }
+    setBusy(false);
+  }
+
+  return (
+    <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+      <h2 style={{ marginBottom: 8 }}>Top up</h2>
+      <p className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
+        Buys more remaining life at the current depth. Capacity is unchanged — cost scales with
+        2<sup>depth</sup>, so a deeper batch costs proportionally more per day.
+      </p>
+      <div className="row">
+        <label className="field" style={{ marginBottom: 0 }}>
+          Extend to{' '}
+          <input type="number" min={Math.ceil(b.ttlDays) + 1} max={3650} value={days} disabled={busy}
+            onChange={(e) => setDays(Number(e.target.value))}
+            style={{ width: 90, padding: '4px 6px' }} /> days
+        </label>
+        <button className={preview ? '' : 'primary'} disabled={busy || days <= b.ttlDays}
+          onClick={() => go(Boolean(preview && preview.allowed))}>
+          {busy ? 'Working…' : preview ? (preview.allowed ? `Confirm — spend ${preview.costBzz.toFixed(3)} xBZZ` : 'Blocked') : 'Preview'}
+        </button>
+        {preview && <button onClick={() => setPreview(null)} disabled={busy}>Cancel</button>}
+      </div>
+
+      {preview && (
+        <div className={`warn ${preview.allowed ? '' : 'err'}`}>
+          {fmtDays(preview.fromDays)} → <strong>{preview.toDays} d</strong> for{' '}
+          <strong>{preview.costBzz.toFixed(3)} xBZZ</strong>.
+          {preview.allowed
+            ? ' Within caps. Depth and capacity are unchanged.'
+            : ` Blocked: ${preview.reason}`}
+        </div>
+      )}
+      {done && <div className="warn" style={{ borderLeftColor: 'var(--good)', background: 'transparent' }}>{done}</div>}
+      {err && <div className="warn err">{err}</div>}
     </div>
   );
 }

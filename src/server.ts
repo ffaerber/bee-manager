@@ -258,6 +258,80 @@ export function createServer(deps: ServerDeps) {
         })
 
         /**
+         * Top up a batch by hand.
+         *
+         * Same two-step shape as dilution and buying, and subject to the same
+         * caps as the automatic path. Being deliberate does not make a spend
+         * safe to leave unbounded — the caps are the only thing standing
+         * between a mis-typed duration and the wallet — so a blocked manual
+         * top-up reports which cap stopped it rather than silently proceeding.
+         */
+        .post('/batches/:id/topup', async ({ params, body, set }) => {
+          const r = poller.last;
+          if (!r?.ok || !r.chain || !r.wallet) { set.status = 503; return { error: 'no poll data yet' }; }
+          const b = r.batches.find((x) => x.batchID === params.id);
+          if (!b) { set.status = 404; return { error: 'unknown batch' }; }
+
+          const { days, confirm } = body as { days?: number; confirm?: boolean };
+          const pol = policyFor(cfg, db.batch(params.id));
+          const targetDays = days ?? pol.topupTargetTtlSec / 86_400;
+          const currentDays = b.batchTTL / 86_400;
+
+          if (targetDays <= currentDays) {
+            set.status = 400;
+            return { error: `batch already has ${currentDays.toFixed(1)}d; a top-up can only extend` };
+          }
+
+          const seconds = Math.round((targetDays - currentDays) * 86_400);
+          const perChunk = amountForDuration(r.chain.currentPrice, seconds, r.msPerBlock);
+          const cost = costPlur(perChunk, b.depth);
+          const verdict = checkCaps(cost, {
+            config: cfg, wallet: r.wallet, chain: r.chain,
+            spentLast24h: db.spentLast24h(), inFlight: db.inFlightBatchIds(), msPerBlock: r.msPerBlock,
+          });
+
+          const preview = {
+            batchId: params.id,
+            fromDays: currentDays,
+            toDays: targetDays,
+            costBzz: plurToBzz(cost),
+            allowed: verdict.allowed,
+            reason: verdict.reason,
+          };
+
+          if (!confirm) return json({ preview, confirmRequired: true });
+          if (!verdict.allowed) { set.status = 403; return { error: `blocked by caps: ${verdict.reason}` }; }
+          if (cfg.dryRun) return json({ dryRun: true, wouldTopup: preview });
+
+          const actionId = db.recordAction({
+            batchId: params.id, appName: null, kind: 'topup',
+            amount: perChunk, cost, status: 'submitted',
+            reason: `manual top-up to ${targetDays}d`, error: null,
+          });
+          try {
+            await bee.topUp(params.id, perChunk);
+            db.updateActionStatus(actionId, 'confirmed');
+            await poller.refreshBatch(params.id);
+            return json({ toppedUp: preview });
+          } catch (e: any) {
+            if (e instanceof BeeIndeterminateError) {
+              // Stays `submitted`: the transaction may still be mined, and
+              // marking it failed would invite a second, duplicate top-up.
+              set.status = 504;
+              return { error: e.message, indeterminate: true };
+            }
+            db.updateActionStatus(actionId, 'failed', e?.message ?? String(e));
+            set.status = 502;
+            return { error: e?.message ?? String(e) };
+          }
+        }, {
+          body: t.Object({
+            days: t.Optional(t.Number({ minimum: 1, maximum: 3650 })),
+            confirm: t.Optional(t.Boolean()),
+          }),
+        })
+
+        /**
          * Dilute a batch: raise its depth, doubling capacity per step.
          *
          * The counter-intuitive part, and why this is two-step: dilution does
@@ -295,8 +369,10 @@ export function createServer(deps: ServerDeps) {
 
           const steps = target - b.depth;
           const ttlAfter = Math.floor(b.batchTTL / Math.pow(2, steps));
-          // What it would cost to put back the life dilution removes.
-          const seconds = Math.max(0, cfg.topupTargetTtlSec - ttlAfter);
+          // What it would cost to put back the life dilution removes, at this
+          // batch's own target rather than the global one.
+          const pol = policyFor(cfg, db.batch(params.id));
+          const seconds = Math.max(0, pol.topupTargetTtlSec - ttlAfter);
           const perChunk = amountForDuration(r.chain.currentPrice, seconds, r.msPerBlock);
           const restoreCost = costPlur(perChunk, target);
 
@@ -310,7 +386,7 @@ export function createServer(deps: ServerDeps) {
             capacityAfterHuman: formatBytes(capacityBytes(target)),
             ttlDaysBefore: b.batchTTL / 86_400,
             ttlDaysAfter: ttlAfter / 86_400,
-            restoreToDays: cfg.topupTargetTtlSec / 86_400,
+            restoreToDays: pol.topupTargetTtlSec / 86_400,
             restoreCostBzz: plurToBzz(restoreCost),
             restoreAffordable: restoreCost <= r.wallet.bzzBalance,
           };
