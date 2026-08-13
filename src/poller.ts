@@ -10,6 +10,7 @@
 
 import { BeeClient, BeeIndeterminateError, type Batch, type ChainState, type Wallet } from './bee';
 import { Db } from './db';
+import { applySettings } from './settings';
 import { Alerter } from './alerts';
 import { evaluateAll, findDisappeared, totalBurnPer30Days, type EvalContext, type Plan } from './evaluate';
 import { plurToBzz, runwaySeconds, GNOSIS_MS_PER_BLOCK } from './math';
@@ -82,6 +83,18 @@ export class Poller {
     private readonly alerter: Alerter,
   ) {}
 
+  /**
+   * The config actually in force: environment plus dashboard overrides.
+   *
+   * Read through this everywhere rather than touching `this.cfg`, so a setting
+   * changed from the dashboard applies on the next cycle. `this.cfg` remains
+   * the environment layer, and for spend caps the ceiling an override cannot
+   * exceed — see src/settings.ts.
+   */
+  private effective(): Config {
+    return applySettings(this.cfg, this.db.settings());
+  }
+
   start() {
     this.tick().catch((e) => console.error('[poll] first tick failed', e));
     this.timer = setInterval(() => {
@@ -111,6 +124,8 @@ export class Poller {
 
   async tick(): Promise<PollResult> {
     const now = Date.now();
+    // Environment plus dashboard overrides, resolved once per cycle.
+    const cfg = this.effective();
     let batches: Batch[], chain: ChainState, wallet: Wallet;
     try {
       [batches, chain, wallet] = await Promise.all([
@@ -165,7 +180,7 @@ export class Poller {
     const burn = totalBurnPer30Days(batches, chain.currentPrice, this.msPerBlock);
     const runwayDays = runwaySeconds(wallet.bzzBalance, burn) / 86_400;
 
-    if (runwayDays < this.cfg.walletLowRunwayDays) {
+    if (runwayDays < cfg.walletLowRunwayDays) {
       await this.alerter.send({
         event: 'wallet_low', level: 'warn',
         message: `Wallet covers ~${runwayDays.toFixed(0)} more days at the current burn of ` +
@@ -177,7 +192,7 @@ export class Poller {
     }
 
     const ctx: EvalContext = {
-      config: this.cfg, wallet, chain,
+      config: cfg, wallet, chain,
       spentLast24h: this.db.spentLast24h(now),
       inFlight: this.db.inFlightBatchIds(),
       msPerBlock: this.msPerBlock,
@@ -229,7 +244,8 @@ export class Poller {
                `(${plurToBzz(plan.cost).toFixed(3)} xBZZ)`,
     });
 
-    if (!this.cfg.autoTopupEnabled || this.cfg.dryRun) {
+    const cfg = this.effective();
+    if (!cfg.autoTopupEnabled || cfg.dryRun) {
       this.db.recordAction({
         batchId: plan.batchId, appName: batch?.label ?? null,
         kind: plan.kind === 'dilute' ? 'dilute' : 'topup',
@@ -237,7 +253,7 @@ export class Poller {
         cost: plan.cost, status: 'dry-run', reason: plan.reason, error: null,
       });
       console.log(`[poll] would ${plan.kind} ${plan.batchId.slice(0, 12)}… — ${plan.reason} ` +
-                  `(${this.cfg.autoTopupEnabled ? 'DRY_RUN' : 'AUTO_TOPUP_ENABLED=false'})`);
+                  `(${cfg.autoTopupEnabled ? 'DRY_RUN' : 'AUTO_TOPUP_ENABLED=false'})`);
       return;
     }
 

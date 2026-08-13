@@ -30,6 +30,7 @@ import { checkCaps, policyFor } from './evaluate';
 import type { Config } from './config';
 import { PriceFeed } from './price';
 import { buildGrid, bucketPressure } from './buckets';
+import { EDITABLE, applySettings, clampToEnv, envValue } from './settings';
 
 export interface ServerDeps {
   cfg: Config;
@@ -151,6 +152,84 @@ export function createServer(deps: ServerDeps) {
               topupTargetTtlDays: cfg.topupTargetTtlSec / 86_400,
             },
           });
+        })
+
+        /**
+         * Runtime settings: every editable key, its environment value, any
+         * override, and how it may be moved.
+         *
+         * The environment value is sent explicitly because for spend caps it is
+         * a ceiling, not merely a default — the dashboard has to be able to say
+         * "you cannot raise this past 5" rather than accepting a number and
+         * silently clamping it.
+         */
+        .get('/settings', () => {
+          const stored = db.settings();
+          const eff = applySettings(cfg, stored);
+          return json({
+            settings: EDITABLE.map((spec) => ({
+              ...spec,
+              envValue: envValue(cfg, spec.key),
+              override: stored[spec.key] ?? null,
+              effective: envValue(eff, spec.key),
+            })),
+            /** Needs a restart; shown read-only so their absence is not a mystery. */
+            fixed: {
+              beeUrl: cfg.beeUrl,
+              pollIntervalMs: cfg.pollIntervalMs,
+              dbPath: cfg.dbPath,
+              maxUploadBytes: cfg.maxUploadBytes,
+            },
+          });
+        })
+
+        .patch('/settings', ({ body, set }) => {
+          const patch = body as Record<string, string | number | boolean | null>;
+          const applied: Record<string, unknown> = {};
+          const clampedKeys: string[] = [];
+
+          for (const [key, raw] of Object.entries(patch)) {
+            const spec = EDITABLE.find((x) => x.key === key);
+            if (!spec) { set.status = 400; return { error: `unknown or non-editable setting: ${key}` }; }
+
+            if (raw === null) { db.setSetting(key, null); applied[key] = null; continue; }
+
+            if (spec.kind === 'bool') {
+              db.setSetting(key, String(Boolean(raw)));
+              applied[key] = Boolean(raw);
+              continue;
+            }
+            if (spec.kind === 'string') {
+              db.setSetting(key, String(raw));
+              applied[key] = String(raw);
+              continue;
+            }
+            const n = Number(raw);
+            if (!Number.isFinite(n)) { set.status = 400; return { error: `${key} must be a number` }; }
+            if (spec.min !== undefined && n < spec.min) { set.status = 400; return { error: `${key} must be at least ${spec.min}` }; }
+            if (spec.max !== undefined && n > spec.max) { set.status = 400; return { error: `${key} must be at most ${spec.max}` }; }
+
+            // Clamp against the environment bound and say so, rather than
+            // storing a number that will not be honoured.
+            const { value, clamped } = clampToEnv(cfg, key, n);
+            if (clamped) clampedKeys.push(key);
+            db.setSetting(key, String(value));
+            applied[key] = value;
+          }
+
+          // Every change is in the ledger. These alter what the service is
+          // permitted to spend, so they belong in the same audit trail as the
+          // spends themselves.
+          db.recordAction({
+            batchId: null, appName: 'dashboard', kind: 'config',
+            amount: 0n, cost: 0n, status: 'confirmed',
+            reason: `settings: ${Object.entries(applied).map(([k, v]) => `${k}=${v}`).join(', ')}`,
+            error: null,
+          });
+
+          return json({ applied, clamped: clampedKeys });
+        }, {
+          body: t.Record(t.String(), t.Union([t.String(), t.Number(), t.Boolean(), t.Null()])),
         })
 
         .get('/actions', ({ query }) => json(db.recentActions(Number(query.limit ?? 100))))
@@ -739,6 +818,7 @@ export function createServer(deps: ServerDeps) {
      * the façade is supposed to forward.
      */
     app.get('/batch/:id', index);
+    app.get('/settings', index);
     app.get('/assets/*', ({ params, set }: any) => {
       const file = Bun.file(`${webDist}/assets/${params['*']}`);
       set.status = 200;

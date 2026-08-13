@@ -1,11 +1,12 @@
 # Dashboard structure
 
-Two pages. Everything else is a modal on one of them.
+Three pages. Everything else is a modal on one of them.
 
 | Page | File | What it answers |
 |---|---|---|
 | `/` | [index.md](index.md) | Is anything about to break, and what is this costing? |
 | `/batch/<id>` | [batch-detail.md](batch-detail.md) | What is *in* this batch, and what should happen to it? |
+| `/settings` | [settings.md](settings.md) | What is this service allowed to do? |
 
 ```
 /                                   overview
@@ -13,6 +14,10 @@ Two pages. Everything else is a modal on one of them.
 ├─ Batches       table → "Create batch" modal (the wizard)
 │  └─ open →     /batch/<id>
 └─ Recent actions
+
+/settings                           runtime config, layered over the environment
+├─ editable      thresholds, caps, floors, webhook
+└─ fixed         bee url, poll interval, db path — need a redeploy
 
 /batch/<id>                         one batch — the bucket map IS the page
 ├─ batch facts   label, life, depth, managed, flags, id

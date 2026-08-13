@@ -134,6 +134,25 @@ export const uploadToBatch = (id: string, file: File) =>
     `/batches/${id}/upload?name=${encodeURIComponent(file.name)}`,
     { method: 'POST', body: file, headers: { 'content-type': file.type || 'application/octet-stream' } },
   );
+/** One runtime setting, with its environment value and any override. */
+export interface SettingSpec {
+  key: string; kind: 'bool' | 'int' | 'float' | 'bzz' | 'string';
+  bound: 'free' | 'atMost' | 'atLeast';
+  label: string; hint?: string; min?: number; max?: number;
+  envValue: string | number | boolean | null;
+  override: string | null;
+  effective: string | number | boolean | null;
+}
+export interface SettingsResponse {
+  settings: SettingSpec[];
+  fixed: { beeUrl: string; pollIntervalMs: number; dbPath: string; maxUploadBytes: number };
+}
+export const getSettings = () => req<SettingsResponse>('/settings');
+export const patchSettings = (patch: Record<string, string | number | boolean | null>) =>
+  req<{ applied: Record<string, unknown>; clamped: string[] }>('/settings', {
+    method: 'PATCH', body: JSON.stringify(patch),
+  });
+
 export const getState = () => req<State>('/state');
 export const getActions = () => req<Action[]>('/actions?limit=25');
 export const getLadder = (days: number, storedBytes?: string) =>

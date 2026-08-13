@@ -50,6 +50,11 @@ export function link(to: string) {
   };
 }
 
+/** True on the settings route. */
+export function isSettings(path: string): boolean {
+  return /^\/settings\/?$/.test(path);
+}
+
 /** The batch id in /batch/<64 hex>, or null. */
 export function batchIdFrom(path: string): string | null {
   const m = /^\/batch\/([0-9a-fA-F]{64})\/?$/.exec(path);

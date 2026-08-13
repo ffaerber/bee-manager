@@ -15,7 +15,7 @@ import { Database } from 'bun:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-export type ActionKind = 'topup' | 'dilute' | 'buy';
+export type ActionKind = 'topup' | 'dilute' | 'buy' | 'config';
 export type ActionStatus = 'planned' | 'submitted' | 'confirmed' | 'failed' | 'blocked' | 'dry-run';
 
 export interface ActionRow {
@@ -147,6 +147,12 @@ export class Db {
         key     TEXT PRIMARY KEY,
         ts      INTEGER NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS settings (
+        key        TEXT PRIMARY KEY,
+        value      TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
       CREATE TABLE IF NOT EXISTS uploads (
         id        INTEGER PRIMARY KEY AUTOINCREMENT,
         ts        INTEGER NOT NULL,
@@ -430,6 +436,36 @@ export class Db {
       (out[key] ??= []).push(a.name);
     }
     return out;
+  }
+
+  // ── runtime settings ─────────────────────────────────────────────────
+
+  /**
+   * Settings changed from the dashboard, layered over the environment.
+   *
+   * Stored as strings and parsed by the config layer, so this table never has
+   * to know what a setting means. Absent keys fall through to the env, which
+   * stays the source of the default and — for spend caps — of the hard ceiling
+   * the dashboard cannot exceed.
+   */
+  settings(): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const r of this.db.query(`SELECT key, value FROM settings`).all() as any[]) {
+      out[r.key] = r.value;
+    }
+    return out;
+  }
+
+  /** Set a setting, or delete it with null to return to the environment value. */
+  setSetting(key: string, value: string | null, now = Date.now()) {
+    if (value === null) {
+      this.db.query(`DELETE FROM settings WHERE key = ?1`).run(key);
+      return;
+    }
+    this.db.query(`
+      INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)
+      ON CONFLICT(key) DO UPDATE SET value = ?2, updated_at = ?3
+    `).run(key, value, now);
   }
 
   // ── uploads / quota accounting ───────────────────────────────────────

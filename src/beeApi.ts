@@ -44,7 +44,7 @@ export function createBeeApi({ bee, db, poller, adminToken }: BeeApiDeps) {
    * `/health` is ours (it reports the monitor's health, not the node's), the
    * dashboard lives at `/`, and `/api/*` is the monitor's own API.
    */
-  const OWNED = /^\/(api|health|assets|batch)(\/|$)|^\/$|^\/index\.html$/;
+  const OWNED = /^\/(api|health|assets|batch|settings)(\/|$)|^\/$|^\/index\.html$/;
   /** Resolve the calling app from its API key. */
   async function appFor(headers: Record<string, string | undefined>): Promise<AppRow | null> {
     const key = headers['x-api-key'] ?? headers['authorization']?.replace(/^Bearer\s+/i, '');

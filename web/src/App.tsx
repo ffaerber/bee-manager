@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import { TOKEN } from './api';
 import { BatchDetail } from './BatchDetail';
-import { batchIdFrom, link, usePath } from './router';
+import { batchIdFrom, isSettings, link, usePath } from './router';
+import { Settings } from './Settings';
 import { fmtDays, ttlSeverity } from './format';
 import { Modal } from './Modal';
 import type { Batch, Ladder, Quote, State, Action } from './api';
@@ -13,7 +14,8 @@ export default function App() {
   const [err, setErr] = useState<string | null>(null);
   const [token, setTok] = useState(api.getToken());
   const [busy, setBusy] = useState(false);
-  const batchId = batchIdFrom(usePath());
+  const path = usePath();
+  const batchId = batchIdFrom(path);
   const load = useCallback(async () => {
     try {
       const [s, a] = await Promise.all([api.getState(), api.getActions()]);
@@ -61,6 +63,7 @@ export default function App() {
     );
   }
 
+  if (isSettings(path)) return <Settings />;
   if (batchId) return <BatchDetail batchId={batchId} state={state} onChange={load} />;
 
   if (!state) return <div className="wrap"><p className="muted">Loading…</p></div>;
@@ -82,6 +85,7 @@ export default function App() {
           )}
           <button onClick={async () => { setBusy(true); await api.poll().catch(() => {}); await load(); setBusy(false); }}
             disabled={busy}>{busy ? 'Polling…' : 'Poll now'}</button>
+          <a className="backlink" {...link('/settings')}>Settings</a>
           <button onClick={() => { api.setToken(''); setTok(''); setState(null); setErr('admin token required'); }}
             title="Forget the token stored in this browser">Sign out</button>
         </div>
