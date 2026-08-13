@@ -23,8 +23,10 @@ Swarm stamp monitor          [node reachable] [auto top-up on] [Poll now] [Sign 
 └───────────────────────────────────────────────────────────────────────┘
 
 ┌─ Batches ─────────────────────────────────────────── [Create batch] ──┐
-│ Label │ Depth │ Remaining life │ Used of capacity │ Stored │ Managed │ Flags │      │
-│ t4t   │  24   │ ▓▓▓▓░ 60 d     │ ▓░░░ 2.00%       │ ≤268MB │ managed │mutable│ open→│
+│ Batch                    │ Remaining life  │ Capacity used            │
+│ t4t                      │ ▓▓▓▓░░ 60 d     │ ▓░░░░░ 2.0%              │
+│ depth 24 · 68.7 GB ·     │                 │                          │
+│ unmanaged                │                 │                          │
 │ …                                                                     │
 │                                                                       │
 │ No action needed for 2 managed batches — all above the threshold.     │
@@ -69,16 +71,20 @@ line.
 
 ## Batches table
 
+Three columns. This is a list for spotting the batch that needs attention, not
+for reading its detail — everything you can only act on once you are there lives
+on the batch page.
+
 | Column | Notes |
 |---|---|
-| Label | editable inline; renames the batch **on the Bee node**, so it survives this database |
-| Depth | fixed at creation, only ever increases |
+| Batch | name, linking to `/batch/<id>`. Underneath: depth, capacity, and only the flags that change how it behaves — `unmanaged`, `immutable`, `unusable` |
 | Remaining life | meter + days, coloured against the batch's own top-up threshold |
-| Used of capacity | `utilizationRatio` — the fullest bucket, not the average |
-| Stored | prefixed `≤`: an upper bound quantised off the fullest bucket. It read 268 MB for a batch holding 0.47 MB. The exact figure is on the batch page |
-| Managed | toggle. Unmanaged means never topped up and no alert on expiry |
-| Flags | mutable / immutable, and unusable if so |
-| `open →` | link to `/batch/<id>` |
+| Capacity used | `utilizationRatio` — the **fullest bucket**, not the average, because that is what stops a write |
+
+Moved to the batch page: renaming, the managed toggle, exact stored bytes, and
+the mutable/usable flags when they are the unremarkable case. The `Stored`
+column is gone entirely — it was an upper bound that read 268 MB for a batch
+holding 0.47 MB, and the exact figure was always one click away.
 
 Below the table: the planner's verdict per batch. The all-clear collapses to one
 line; only batches needing something get their own.

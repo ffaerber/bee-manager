@@ -229,13 +229,12 @@ function Batches({ state, onChange }: { state: State; onChange: () => void }) {
           <table>
             <thead>
               <tr>
-                <th>Label</th><th className="num">Depth</th><th>Remaining life</th>
-                <th>Used of capacity</th><th className="num">Stored</th><th>Managed</th><th>Flags</th><th></th>
+                <th>Batch</th><th>Remaining life</th><th>Capacity used</th>
               </tr>
             </thead>
             <tbody>
               {state.batches.map((b) => (
-                <BatchRow key={b.batchID} b={b} threshold={threshold} onChange={onChange} />
+                <BatchRow key={b.batchID} b={b} threshold={threshold} />
               ))}
             </tbody>
           </table>
@@ -290,46 +289,31 @@ function Plans({ plans, batches }: { plans: State['plans']; batches: Batch[] }) 
   );
 }
 
-function BatchRow({ b, threshold, onChange }: { b: Batch; threshold: number; onChange: () => void }) {
+function BatchRow({ b, threshold }: { b: Batch; threshold: number }) {
   const sev = ttlSeverity(b.ttlDays, threshold);
-  const [label, setLabel] = useState(b.label);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  useEffect(() => { setLabel(b.label); }, [b.label]);
-
-  // The label lives on the Bee node, so a rename is a write to it — not just a
-  // local edit. Only send when it actually changed.
-  async function saveLabel() {
-    if (label === b.label || !label.trim()) { setLabel(b.label); return; }
-    setBusy(true); setErr(null);
-    try { await api.patchBatch(b.batchID, { label: label.trim() }); onChange(); }
-    catch (e: any) { setErr(e.message); setLabel(b.label); }
-    setBusy(false);
-  }
-
-  async function toggleManaged() {
-    setBusy(true); setErr(null);
-    try { await api.patchBatch(b.batchID, { managed: !b.managed }); onChange(); }
-    catch (e: any) { setErr(e.message); }
-    setBusy(false);
-  }
   // TTL bar is relative to a 90-day full scale, clamped.
   const ttlPct = Math.max(2, Math.min(100, (b.ttlDays / 90) * 100));
   const usePct = Math.max(0.5, Math.min(100, b.utilizationRatio * 100));
+  const useSev = b.utilizationRatio >= 1 ? 'critical'
+    : b.utilizationRatio >= 0.8 ? 'warning' : 'good';
+
   return (
     <tr>
+      {/* Name, and the two facts that qualify it. Depth, flags, exact stored
+          bytes and the managed toggle all moved to the batch page: this is a
+          list for spotting the batch that needs attention, and everything else
+          was detail you can only act on once you are there. */}
       <td>
-        <input
-          type="text" value={label} disabled={busy}
-          onChange={(e) => setLabel(e.target.value)}
-          onBlur={saveLabel}
-          onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setLabel(b.label); }}
-          style={{ width: 150, padding: '4px 6px', fontSize: 13 }}
-          title="Renames the batch on the Bee node"
-        />
-        {err && <div className="warn err" style={{ marginTop: 4, fontSize: 12 }}>{err}</div>}
+        <a className="rowlink" {...link(`/batch/${b.batchID}`)} style={{ fontWeight: 600 }}>
+          {b.label || `${b.batchID.slice(0, 10)}…`}
+        </a>
+        <div className="tile-sub">
+          depth {b.depth} · {b.capacityHuman}
+          {!b.managed && ' · unmanaged'}
+          {b.immutableFlag && ' · immutable'}
+          {!b.usable && ' · unusable'}
+        </div>
       </td>
-      <td className="num mono">{b.depth}</td>
       <td>
         <div className="row" style={{ gap: 8, flexWrap: 'nowrap' }}>
           <span className={`meter ${sev}`} style={{ width: 90 }}><i style={{ width: `${ttlPct}%` }} /></span>
@@ -338,32 +322,11 @@ function BatchRow({ b, threshold, onChange }: { b: Batch; threshold: number; onC
       </td>
       <td>
         <div className="row" style={{ gap: 8, flexWrap: 'nowrap' }}>
-          <span className="meter" style={{ width: 90 }}><i style={{ width: `${usePct}%` }} /></span>
-          <span className="mono secondary" style={{ minWidth: 46 }}>{(b.utilizationRatio * 100).toFixed(2)}%</span>
+          <span className={`meter ${useSev}`} style={{ width: 90 }}><i style={{ width: `${usePct}%` }} /></span>
+          <span className="mono secondary" style={{ minWidth: 46 }}>
+            {(b.utilizationRatio * 100).toFixed(1)}%
+          </span>
         </div>
-      </td>
-      {/* utilizationRatio is quantised off the fullest bucket, so this is an
-          upper bound and can overstate by orders of magnitude — 268 MB shown
-          for a batch holding 0.47 MB. The bucket map reports the exact count. */}
-      <td className="num mono" title="Upper bound from utilizationRatio. Open the bucket map for the exact figure.">
-        ≤ {b.storedHuman} <span className="muted">/ {b.capacityHuman}</span>
-      </td>
-      <td>
-        <button onClick={toggleManaged} disabled={busy} style={{ padding: '4px 10px', fontSize: 12 }}
-          title={b.managed
-            ? 'Topped up automatically. Click to leave it alone — it will expire on its own.'
-            : 'Never topped up; its expiry raises no alert. Click to manage it again.'}>
-          {b.managed ? 'managed' : 'unmanaged'}
-        </button>
-      </td>
-      <td className="secondary" style={{ fontSize: 12 }}>
-        {b.usable ? '' : 'unusable '}{b.immutableFlag ? 'immutable' : 'mutable'}
-      </td>
-      <td>
-        <a className="rowlink" {...link(`/batch/${b.batchID}`)}
-          title="Open this batch: bucket map, exact stored size, upload">
-          open →
-        </a>
       </td>
     </tr>
   );
