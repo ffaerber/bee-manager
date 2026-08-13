@@ -123,12 +123,21 @@ export class BeeClient {
     try {
       res = await fetch(`${this.baseUrl}${path}`, { ...init, signal: AbortSignal.timeout(timeout) });
     } catch (e: any) {
-      // A read that times out is simply a failed read — nothing happened. A
-      // write that times out may have spent money, and must be surfaced as
-      // such so the caller records it as in-flight rather than failed.
-      if (opts.write && (e?.name === 'TimeoutError' || e?.name === 'AbortError')) {
-        throw new BeeIndeterminateError(opts.operation ?? path, e);
-      }
+      // Nothing came back at all. For a read that is simply a failed read. For
+      // a write it means the request never completed — and abandoning an HTTP
+      // request does not cancel a blockchain transaction, so the outcome is
+      // UNKNOWN and must not be recorded as failed.
+      //
+      // Every fetch rejection counts, not just timeouts. A live dilution was
+      // lost to "The socket connection was closed unexpectedly", which is
+      // neither TimeoutError nor AbortError: it was logged failed while the
+      // transaction actually landed, leaving the ledger disagreeing with the
+      // chain and inviting a second dilution on the next poll.
+      //
+      // The distinction that matters is fetch throwing versus an HTTP error
+      // response: a 4xx/5xx means Bee answered and rejected it, which is a
+      // real failure, and that path is below.
+      if (opts.write) throw new BeeIndeterminateError(opts.operation ?? path, e);
       throw e;
     }
     const body = await res.text();
