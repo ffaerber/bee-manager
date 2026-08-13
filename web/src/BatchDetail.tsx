@@ -166,42 +166,59 @@ export function BatchDetail({ batchId, state, onChange }: {
               {data.pressure.message}
             </div>
 
-            <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
-              <div className="row">
-                <input ref={filePick} type="file" style={{ display: 'none' }}
-                  onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); }} />
-                <button className="primary" disabled={uploading} onClick={() => filePick.current?.click()}>
-                  {uploading ? 'Uploading…' : 'Upload a file'}
-                </button>
-                <span className="muted" style={{ fontSize: 12 }}>
-                  Stamps it with this batch — watch the background fill. Up to{' '}
-                  {fmtBytes(data.maxUploadBytes)}, and {fmtBytes(data.freeChunks * 4096)} of batch
-                  space is unused.
-                </span>
-              </div>
-              {/* Both are irreversible and neither is obvious from a file
-                  picker, so they are stated where the choice is made. */}
-              <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
-                Uploaded data is public — anyone with the reference can fetch it — and the stamps it
-                consumes cannot be reclaimed
-                {data.immutable
-                  ? ', and this batch is immutable, so those bucket slots are gone for its lifetime.'
-                  : '.'}
+            {data.totalChunks > 0 && (
+              <p className="muted" style={{ fontSize: 12, marginTop: 12 }}>
+                Occupying {((data.usedBuckets / (1 << data.bucketDepth)) * 100).toFixed(2)}% of buckets
+                and {((data.storedBytes / data.capacityBytes) * 100).toFixed(4)}% of paid capacity.
+                {data.storedBytes / data.capacityBytes < 0.01 &&
+                  ' Rent is charged on the whole batch regardless, so most of what this costs is buying empty space.'}
               </p>
-              {uploaded && (
-                <div className="warn" style={{ borderLeftColor: 'var(--good)', background: 'transparent' }}>
-                  Uploaded <strong>{uploaded.name}</strong> ({fmtBytes(uploaded.bytes)}) —{' '}
-                  <strong>{uploaded.newChunks.toLocaleString()}</strong> new chunk
-                  {uploaded.newChunks === 1 ? '' : 's'}.
-                  <br />
-                  <code style={{ fontSize: 11, wordBreak: 'break-all' }}>{uploaded.reference}</code>
-                </div>
-              )}
+            )}
+          </div>
+        )}
+
+        {/* Last on the page, and one card rather than two sections inside the
+            bucket panel: putting a file somewhere and seeing what is already
+            there are the same task, and neither is why you open this page. */}
+        {data && (
+          <div className="card">
+            <h2 style={{ marginBottom: 10 }}>Files</h2>
+
+            <div className="row">
+              <input ref={filePick} type="file" style={{ display: 'none' }}
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); }} />
+              <button className="primary" disabled={uploading} onClick={() => filePick.current?.click()}>
+                {uploading ? 'Uploading…' : 'Upload a file'}
+              </button>
+              <span className="muted" style={{ fontSize: 12 }}>
+                Stamps it with this batch — watch the background fill. Up to{' '}
+                {fmtBytes(data.maxUploadBytes)}, and {fmtBytes(data.freeChunks * 4096)} of batch
+                space is unused.
+              </span>
             </div>
 
-            {uploads.length > 0 && (
+            {/* Both are irreversible and neither is obvious from a file
+                picker, so they are stated where the choice is made. */}
+            <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+              Uploaded data is public — anyone with the reference can fetch it — and the stamps it
+              consumes cannot be reclaimed
+              {data.immutable
+                ? ', and this batch is immutable, so those bucket slots are gone for its lifetime.'
+                : '.'}
+            </p>
+
+            {uploaded && (
+              <div className="warn" style={{ borderLeftColor: 'var(--good)', background: 'transparent' }}>
+                Uploaded <strong>{uploaded.name}</strong> ({fmtBytes(uploaded.bytes)}) —{' '}
+                <strong>{uploaded.newChunks.toLocaleString()}</strong> new chunk
+                {uploaded.newChunks === 1 ? '' : 's'}.
+                <br />
+                <code style={{ fontSize: 11, wordBreak: 'break-all' }}>{uploaded.reference}</code>
+              </div>
+            )}
+
+            {uploads.length > 0 ? (
               <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
-                <h2 style={{ marginBottom: 10 }}>Uploaded with this batch</h2>
                 <div className="scroll-x">
                   <table>
                     <thead>
@@ -222,14 +239,11 @@ export function BatchDetail({ batchId, state, onChange }: {
                   is lost is lost, even though the data is still stored and still paid for.
                 </p>
               </div>
-            )}
-
-            {data.totalChunks > 0 && (
-              <p className="muted" style={{ fontSize: 12, marginTop: 12 }}>
-                Occupying {((data.usedBuckets / (1 << data.bucketDepth)) * 100).toFixed(2)}% of buckets
-                and {((data.storedBytes / data.capacityBytes) * 100).toFixed(4)}% of paid capacity.
-                {data.storedBytes / data.capacityBytes < 0.01 &&
-                  ' Rent is charged on the whole batch regardless, so most of what this costs is buying empty space.'}
+            ) : (
+              <p className="muted" style={{ fontSize: 12, marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+                Nothing uploaded through this dashboard yet. Swarm cannot list a batch's contents, so
+                only what is recorded here can be fetched back — anything uploaded by other means
+                will not appear.
               </p>
             )}
           </div>

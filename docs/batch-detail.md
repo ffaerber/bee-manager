@@ -37,11 +37,12 @@ A real URL, so it can be bookmarked, shared, or pinned on a wall display.
 │                                                                       │
 │ ▪empty ▪lightly ▪half ▪mostly ▪nearly full 80%+ ▪at capacity          │
 │ The fullest bucket is at 25% — plenty of headroom.                    │
+└───────────────────────────────────────────────────────────────────────┘
+┌─ Files ───────────────────────────────────────────────────────────────┐
+│ [Upload a file]   up to 32 MB, 1.07 GB of batch space unused          │
+│ Uploaded data is public and the stamps cannot be reclaimed.           │
 │                                                                       │
-│ ── Top up ──                                                          │
-│ ── Dilute ──                                                          │
-│ ── Upload a file ──                                                   │
-│ ── Uploaded with this batch ──                                        │
+│ File │ Size │ When │ Reference │ view · download                      │
 └───────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -127,7 +128,13 @@ Preview → Confirm, 1–3 steps. Irreversible — depth never decreases. The pr
 leads with the TTL loss and what restoring it would cost. Refused on immutable
 batches: Bee will not dilute one, and it would not help.
 
-## Upload a file
+## Files
+
+Last on the page, and one card rather than two sections buried in the bucket
+panel: putting a file somewhere and seeing what is already there are the same
+task, and neither is why you open this page.
+
+### Upload
 
 Stamps a file with this batch and re-reads the buckets, so new cells appear at
 once. The chunk delta is **measured, not derived** — Swarm adds Merkle-tree and
@@ -141,7 +148,7 @@ Two irreversible consequences are stated at the button: the data becomes
 Limit 32 MB — a memory bound, not policy: the body is buffered whole in a 512 MB
 container. Checked in the browser before transferring.
 
-## Uploaded with this batch
+### The list
 
 | Column | Notes |
 |---|---|
