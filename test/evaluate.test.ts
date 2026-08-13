@@ -80,17 +80,19 @@ describe('TTL threshold', () => {
 });
 
 describe('dilution', () => {
-  const full = withTTL(40, { utilizationRatio: 0.95 });
-  // Diluting depth 24 -> 25 and restoring TTL is a large spend against the live
-  // wallet — a real affordability block, not a dilution bug. Fund these cases so
-  // they exercise the dilution rules rather than the cap.
+  // Depth 20: under the automatic ceiling, so these exercise the dilution
+  // rules rather than the ceiling. The live t4t at depth 24 is deliberately
+  // above it — see the ceiling tests below.
+  const full = withTTL(40, { utilizationRatio: 0.95, depth: 20 });
+  // Diluting and restoring TTL is a large spend against the live wallet — a
+  // real affordability block, not a dilution bug. Fund these cases.
   const funded = { wallet: { ...wallet, bzzBalance: bzzToPlur('5000') } };
 
   it('dilutes a full mutable batch, and orders dilute before top-up', () => {
     const p = evaluateBatch(full, ctx(funded));
     expect(p.kind).toBe('dilute');
     if (p.kind !== 'dilute') throw new Error();
-    expect(p.newDepth).toBe(baseBatch.depth + 1);
+    expect(p.newDepth).toBe(21);
     expect(p.thenTopup).toBeGreaterThan(0n);
     expect(p.reason).toContain('95.0% full');
   });
@@ -106,8 +108,42 @@ describe('dilution', () => {
   });
 
   it('takes capacity pressure ahead of a TTL top-up', () => {
-    const p = evaluateBatch(withTTL(2, { utilizationRatio: 0.95 }), ctx(funded));
+    const p = evaluateBatch(withTTL(2, { utilizationRatio: 0.95, depth: 20 }), ctx(funded));
     expect(p.kind).toBe('dilute'); // not 'topup', despite TTL also being low
+  });
+
+  it('fires before a bucket is full on a shallow batch', () => {
+    // Depth 18 can only read 0, .25, .5, .75, 1. A fixed 0.8 threshold was
+    // unreachable until 1.0 — after a mutable batch had begun discarding its
+    // oldest chunks. 0.75 is one slot from full and must now trigger.
+    const p = evaluateBatch(withTTL(40, { utilizationRatio: 0.75, depth: 18 }), ctx(funded));
+    expect(p.kind).toBe('dilute');
+  });
+
+  it('does not fire on a shallow batch that is merely half used', () => {
+    const p = evaluateBatch(withTTL(40, { utilizationRatio: 0.25, depth: 18 }), ctx(funded));
+    expect(p.kind).not.toBe('dilute');
+  });
+
+  describe('automatic depth ceiling', () => {
+    it('refuses to dilute past MAX_AUTO_DILUTE_DEPTH', () => {
+      // The live t4t shape. Cost scales with 2^depth, so an automatic
+      // dilution here would permanently double an already-large burn —
+      // exactly the decision that should stay human.
+      const p = evaluateBatch(withTTL(40, { utilizationRatio: 0.95, depth: 24 }), ctx(funded));
+      expect(p.kind).not.toBe('dilute');
+    });
+
+    it('still dilutes just below the ceiling', () => {
+      const p = evaluateBatch(withTTL(40, { utilizationRatio: 0.95, depth: 21 }), ctx(funded));
+      expect(p.kind).toBe('dilute');
+    });
+
+    it('follows a raised ceiling', () => {
+      const p = evaluateBatch(withTTL(40, { utilizationRatio: 0.95, depth: 24 }),
+        ctx(funded, { MAX_AUTO_DILUTE_DEPTH: '26' }));
+      expect(p.kind).toBe('dilute');
+    });
   });
 });
 

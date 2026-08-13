@@ -35,6 +35,28 @@ export interface CapVerdict {
   reason: string;
 }
 
+/**
+ * The utilisation at which a batch should be diluted, for a given depth.
+ *
+ * `utilizationRatio` is not continuous: it is maxCollisions / 2^(depth-16), so
+ * a shallow batch has very few possible values. At depth 17 the only values
+ * are 0, 0.5 and 1; at depth 18, quarters. A fixed 0.8 threshold is therefore
+ * unreachable on those batches until the ratio hits exactly 1.0 — by which
+ * point a bucket is already full, and a mutable batch is already discarding
+ * its oldest chunks to make room. The guard would fire only after the damage.
+ *
+ * So the trigger is the configured threshold OR "one slot left in the fullest
+ * bucket", whichever comes first. Deep batches keep the 0.8 behaviour, since
+ * one slot out of 256 is far tighter than 80%; shallow batches get a threshold
+ * they can actually reach in time.
+ */
+export function diluteTriggerFor(depth: number, configured: number): number {
+  const bucketUpperBound = Math.pow(2, Math.max(0, depth - 16));
+  if (bucketUpperBound <= 1) return 1;
+  const oneSlotLeft = (bucketUpperBound - 1) / bucketUpperBound;
+  return Math.min(configured, oneSlotLeft);
+}
+
 export function checkCaps(cost: bigint, ctx: EvalContext): CapVerdict {
   const { config: c, wallet } = ctx;
   const bzz = (p: bigint) => plurToBzz(p).toFixed(4);
@@ -83,7 +105,8 @@ export function evaluateBatch(batch: Batch, ctx: EvalContext): Plan {
   const needsDilute =
     c.diluteEnabled &&
     !batch.immutableFlag &&
-    batch.utilizationRatio > c.diluteWhenUtilizationAbove;
+    batch.depth < c.maxAutoDiluteDepth &&
+    batch.utilizationRatio >= diluteTriggerFor(batch.depth, c.diluteWhenUtilizationAbove);
 
   if (needsDilute) {
     const newDepth = batch.depth + 1;

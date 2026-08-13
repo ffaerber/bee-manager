@@ -58,6 +58,7 @@ export interface Config {
   topupTargetTtlSec: number;
   diluteWhenUtilizationAbove: number;
   diluteEnabled: boolean;
+  maxAutoDiluteDepth: number;
 
   maxTopupPlurPerBatch: bigint;
   maxTopupPlurPerDay: bigint;
@@ -102,6 +103,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       topupTargetTtlSec: int('TOPUP_TARGET_TTL_DAYS', 60, 1) * 86_400,
       diluteWhenUtilizationAbove: Number(str('DILUTE_WHEN_UTILIZATION_ABOVE', '0.8')),
       diluteEnabled: bool('DILUTE_ENABLED', true),
+      /**
+       * Automatic dilution stops here.
+       *
+       * Dilution cannot be undone and permanently doubles the cost of every
+       * future top-up, since cost scales with 2^depth. An unbounded automatic
+       * version could walk a batch up to a running cost nothing else in this
+       * service would authorise — the spend caps only see one action at a
+       * time, not the burn rate it leaves behind. Past this depth it becomes a
+       * human decision, which usually means buying a right-sized batch instead.
+       */
+      maxAutoDiluteDepth: int('MAX_AUTO_DILUTE_DEPTH', 22, 17),
 
       maxTopupPlurPerBatch: plur('MAX_TOPUP_BZZ_PER_BATCH', '10'),
       maxTopupPlurPerDay: plur('MAX_TOPUP_BZZ_PER_DAY', '25'),
@@ -139,6 +151,10 @@ export function describeConfig(c: Config): string {
     `autoTopup=${c.autoTopupEnabled ? 'ON' : 'off'} dryRun=${c.dryRun ? 'ON' : 'off'}`,
     `topup when TTL<${c.topupWhenTtlBelowSec / 86400}d -> ${c.topupTargetTtlSec / 86400}d`,
     `caps: ${bzz(c.maxTopupPlurPerBatch)}/action ${bzz(c.maxTopupPlurPerDay)}/day floor ${bzz(c.minWalletPlur)} xBZZ`,
+    // Dilution was armed by default and reported nowhere. It is irreversible
+    // and permanently raises the burn rate, so it belongs in the banner beside
+    // auto top-up rather than being discovered from a depth that changed.
+    `dilute=${c.diluteEnabled ? `ON >${c.diluteWhenUtilizationAbove * 100}% up to depth ${c.maxAutoDiluteDepth}` : 'off'}`,
     `webhook=${c.webhookUrl ? 'set' : 'none'}`,
   ].join(' | ');
 }
