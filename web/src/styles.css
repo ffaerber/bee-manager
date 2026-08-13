@@ -277,3 +277,9 @@ tr:hover .rowlink { text-decoration: underline; }
 /* The two vitals side by side on a wide screen, stacked on a narrow one. The
    meters are the point, so they take the width rather than the numbers. */
 .vitals { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+
+/* Clickable rows. The hover tint is the only affordance a table row has, so it
+   has to be visible without being loud enough to read as selection. */
+tr.is-clickable { cursor: pointer; }
+tr.is-clickable:hover td { background: color-mix(in srgb, var(--series-1) 7%, transparent); }
+tr.is-clickable:hover .rowlink { text-decoration: underline; }

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import { TOKEN } from './api';
 import { BatchDetail } from './BatchDetail';
-import { batchIdFrom, isSettings, link, usePath } from './router';
+import { batchIdFrom, isSettings, link, navigate, usePath } from './router';
 import { Settings } from './Settings';
 import { Wallet } from './Wallet';
 import { fmtDays, ttlSeverity } from './format';
@@ -291,6 +291,24 @@ function Plans({ plans, batches }: { plans: State['plans']; batches: Batch[] }) 
 
 function BatchRow({ b, threshold }: { b: Batch; threshold: number }) {
   const sev = ttlSeverity(b.ttlDays, threshold);
+  const to = `/batch/${b.batchID}`;
+
+  /**
+   * The whole row is a click target, but the name stays a real <a>.
+   *
+   * A row-level handler alone would lose keyboard focus, middle-click,
+   * ctrl-click and "copy link address" — everything that makes a link a link.
+   * So the anchor carries those, and this only widens the mouse target.
+   *
+   * Ignored: clicks that land on a control, and clicks that end a text
+   * selection, which is someone copying a label rather than navigating.
+   */
+  function onRowClick(e: React.MouseEvent<HTMLTableRowElement>) {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    if ((e.target as HTMLElement).closest('a, button, input, select, textarea')) return;
+    if (window.getSelection()?.toString()) return;
+    navigate(to);
+  }
   // TTL bar is relative to a 90-day full scale, clamped.
   const ttlPct = Math.max(2, Math.min(100, (b.ttlDays / 90) * 100));
   const usePct = Math.max(0.5, Math.min(100, b.utilizationRatio * 100));
@@ -298,13 +316,13 @@ function BatchRow({ b, threshold }: { b: Batch; threshold: number }) {
     : b.utilizationRatio >= 0.8 ? 'warning' : 'good';
 
   return (
-    <tr>
+    <tr className="is-clickable" onClick={onRowClick}>
       {/* Name, and the two facts that qualify it. Depth, flags, exact stored
           bytes and the managed toggle all moved to the batch page: this is a
           list for spotting the batch that needs attention, and everything else
           was detail you can only act on once you are there. */}
       <td>
-        <a className="rowlink" {...link(`/batch/${b.batchID}`)} style={{ fontWeight: 600 }}>
+        <a className="rowlink" {...link(to)} style={{ fontWeight: 600 }}>
           {b.label || `${b.batchID.slice(0, 10)}…`}
         </a>
         <div className="tile-sub">
