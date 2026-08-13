@@ -318,6 +318,10 @@ export function createServer(deps: ServerDeps) {
               return { error: `bee rejected the rename: ${e?.message ?? e}` };
             }
             db.setLabel(params.id, label);
+            // The dashboard reads labels from the poll cache, so correct it
+            // now rather than leaving the rename invisible until the next
+            // cycle. See Poller.patchCachedLabel.
+            poller.patchCachedLabel(params.id, label);
           }
           if (managed !== undefined) db.setManaged(params.id, managed);
 

@@ -22,7 +22,9 @@ import { expiryDate, fmtBytes, fmtDays, ttlSeverity } from './format';
 const REFRESH_MS = 60_000;
 
 export function BatchDetail({ batchId, state, onChange }: {
-  batchId: string; state: State | null; onChange: () => void;
+  batchId: string; state: State | null;
+  /** Refresh the shared state. Awaited, so edits re-sync only once it has landed. */
+  onChange: () => void | Promise<void>;
 }) {
   const [data, setData] = useState<BucketGrid | null>(null);
   const [fills, setFills] = useState<Uint8Array | null>(null);
@@ -246,13 +248,17 @@ export function BatchDetail({ batchId, state, onChange }: {
  * Editable here for the same reason it is editable in the row: this is the page
  * you are on when you decide a batch needs renaming or retiring.
  */
-function BatchFacts({ b, state, onChange }: { b: Batch; state: State; onChange: () => void }) {
+function BatchFacts({ b, state, onChange }: {
+  b: Batch; state: State; onChange: () => void | Promise<void>;
+}) {
   const [label, setLabel] = useState(b.label);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  // Keep in step with the 30s refresh, unless the field is being edited.
+  // Follow the periodic refresh, but never while a save is in flight: clearing
+  // `busy` before the new state has landed would re-sync from the stale value
+  // and make an accepted rename look rejected.
   useEffect(() => { if (!busy) setLabel(b.label); }, [b.label, busy]);
 
   const threshold = state.config.topupWhenTtlBelowDays;
@@ -260,8 +266,15 @@ function BatchFacts({ b, state, onChange }: { b: Batch; state: State; onChange: 
 
   async function save(patch: { label?: string; managed?: boolean }) {
     setBusy(true); setErr(null);
-    try { await api.patchBatch(b.batchID, patch); onChange(); }
-    catch (e: any) { setErr(e.message); setLabel(b.label); }
+    try {
+      await api.patchBatch(b.batchID, patch);
+      // Awaited: `busy` must stay true until the refreshed state is in, or the
+      // re-sync effect fires against the old label and reverts the field.
+      await onChange();
+    } catch (e: any) {
+      setErr(e.message);
+      setLabel(b.label);
+    }
     setBusy(false);
   }
 

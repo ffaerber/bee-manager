@@ -33,6 +33,24 @@ export class Poller {
   private timer: Timer | null = null;
   last: PollResult | null = null;
 
+  /**
+   * Correct the cached label for one batch, after a rename.
+   *
+   * /state serves labels from the last poll, so without this a rename is
+   * invisible until the next cycle — up to POLL_INTERVAL_MS, five minutes by
+   * default. The node and the database are both already correct at that point;
+   * only this cache is behind, and it is the one the dashboard reads. The
+   * result is a rename that appears to silently fail.
+   *
+   * Deliberately narrow: it edits the one field that changed rather than
+   * triggering a full tick, because a tick also runs the evaluate/top-up pass,
+   * and a rename must not be able to set off a spend.
+   */
+  patchCachedLabel(batchId: string, label: string) {
+    const b = this.last?.batches.find((x) => x.batchID === batchId);
+    if (b) b.label = label;
+  }
+
   constructor(
     private readonly cfg: Config,
     private readonly bee: BeeClient,
