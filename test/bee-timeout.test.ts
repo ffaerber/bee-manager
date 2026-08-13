@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'bun:test';
+import { afterEach, describe, it, expect } from 'bun:test';
 import { BeeClient, BeeIndeterminateError } from '../src/bee';
 
 /** A server that never answers, to force a client-side timeout. */
@@ -101,6 +101,11 @@ describe('buyBatch immutability default', () => {
  * with reality, and the next poll would have been free to repeat the action.
  */
 describe('any incomplete write is indeterminate', () => {
+  const realFetch = globalThis.fetch;
+  // Restored after every case: leaving a stubbed fetch behind breaks any later
+  // suite that makes a real request, which is exactly what happened first time.
+  afterEach(() => { globalThis.fetch = realFetch; });
+
   const cases: [string, Error][] = [
     ['socket closed', Object.assign(new Error('The socket connection was closed unexpectedly'), { name: 'Error' })],
     ['connection reset', Object.assign(new Error('ECONNRESET'), { name: 'Error' })],
@@ -111,7 +116,7 @@ describe('any incomplete write is indeterminate', () => {
   for (const [name, err] of cases) {
     it(`treats "${name}" as indeterminate on a write`, async () => {
       const bee = new BeeClient('http://bee:1633', 50, 50, 50);
-      (globalThis as any).fetch = async () => { throw err; };
+      globalThis.fetch = (async () => { throw err; }) as any;
       await expect(bee.dilute('aa'.repeat(32), 19)).rejects.toBeInstanceOf(BeeIndeterminateError);
     });
   }
@@ -119,14 +124,14 @@ describe('any incomplete write is indeterminate', () => {
   it('still reports an HTTP rejection as a plain failure', async () => {
     // Bee answered and said no. Nothing was submitted, so this is definite.
     const bee = new BeeClient('http://bee:1633', 50, 50, 50);
-    (globalThis as any).fetch = async () =>
-      new Response(JSON.stringify({ code: 400, message: 'depth must increase' }), { status: 400 });
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ code: 400, message: 'depth must increase' }), { status: 400 })) as any;
     await expect(bee.dilute('aa'.repeat(32), 19)).rejects.not.toBeInstanceOf(BeeIndeterminateError);
   });
 
   it('leaves reads alone — a failed read means nothing happened', async () => {
     const bee = new BeeClient('http://bee:1633', 50, 50, 50);
-    (globalThis as any).fetch = async () => { throw new Error('ECONNRESET'); };
+    globalThis.fetch = (async () => { throw new Error('ECONNRESET'); }) as any;
     await expect(bee.stamps()).rejects.not.toBeInstanceOf(BeeIndeterminateError);
   });
 });
