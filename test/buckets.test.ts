@@ -169,3 +169,52 @@ describe('firstFullEstimate', () => {
     expect(g.firstFullChunks).toBe(Math.round(firstFullEstimate(18)));
   });
 });
+
+/**
+ * The one-slot-left case, which a percentage threshold hides.
+ *
+ * At bucketUpperBound 4 the fullest bucket reads 75% when the very next
+ * collision there ends an immutable batch outright. Against a fixed 80% rule
+ * that reported "plenty of headroom" — and did so for a real batch that was one
+ * chunk from refusing every upload.
+ */
+describe('bucketPressure at one slot left', () => {
+  /** Fullest bucket at ub-1, i.e. a single slot remaining. */
+  const nearlyFull = (depth: number) => {
+    const ub = Math.pow(2, depth - 16);
+    return buildGrid(report(depth, (i) => (i === 0 ? ub - 1 : 0)));
+  };
+
+  it('is critical for an immutable batch, whatever the percentage says', () => {
+    const g = nearlyFull(18); // 3 of 4 = 75%, below any 80% rule
+    const p = bucketPressure(g, true);
+    expect(p.level).toBe('critical');
+    expect(p.message).toMatch(/one slot left/i);
+    expect(p.message).toMatch(/refuses every upload/i);
+  });
+
+  it('warns for a mutable batch, which loses data rather than stopping', () => {
+    const p = bucketPressure(nearlyFull(18), false);
+    expect(p.level).toBe('warning');
+    expect(p.message).toMatch(/recycling|drops data/i);
+  });
+
+  it('catches the shallowest case, where one slot is 50%', () => {
+    // depth 17: bucketUpperBound 2, so 1 of 2 is one slot left.
+    expect(bucketPressure(nearlyFull(17), true).level).toBe('critical');
+  });
+
+  it('still fires on deep batches via the percentage rule', () => {
+    // depth 24: 208 of 256 is 81%, nowhere near one slot left.
+    const g = buildGrid(report(24, (i) => (i === 0 ? 208 : 0)));
+    expect(bucketPressure(g, false).level).toBe('warning');
+  });
+
+  it('warns when stored chunks approach the effective capacity', () => {
+    // No single bucket is close, but the batch as a whole is — the case that
+    // the fullest-bucket view alone cannot see.
+    const g = buildGrid(report(18, (i) => (i < 7000 ? 1 : 0)));
+    expect(g.maxCollisions).toBe(1); // 25%, looks calm
+    expect(bucketPressure(g, false).level).toBe('warning');
+  });
+});

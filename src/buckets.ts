@@ -184,14 +184,41 @@ export function bucketPressure(g: BucketGrid, immutable: boolean): {
           message: `${g.fullBuckets.toLocaleString()} buckets are full. Being mutable, this batch recycles its oldest chunk in a full bucket rather than refusing the write — those chunks are silently unpinned. Dilute to stop losing them.`,
         };
   }
+  // One slot left is the real warning line, and a percentage hides it on
+  // shallow batches: at bucketUpperBound 4 the fullest bucket reads 75% when
+  // the very next collision there ends an immutable batch outright. A fixed 80%
+  // threshold called that "plenty of headroom".
+  const oneSlotLeft = g.maxCollisions >= g.bucketUpperBound - 1;
+
+  if (oneSlotLeft) {
+    return immutable
+      ? {
+          level: 'critical',
+          message: `The fullest bucket holds ${g.maxCollisions} of ${g.bucketUpperBound} — one slot left. Being immutable, the next chunk whose address lands there takes the WHOLE batch to 100% utilised and it refuses every upload after that. Dilute now, before that happens.`,
+        }
+      : {
+          level: 'warning',
+          message: `The fullest bucket holds ${g.maxCollisions} of ${g.bucketUpperBound} — one slot left. The next collision there starts recycling its oldest chunk: the batch keeps accepting, and quietly drops data instead. Dilute to stop that.`,
+        };
+  }
+
   if (pct >= 80) {
     return {
       level: 'warning',
       message: `The fullest bucket is at ${pct.toFixed(0)}% (${g.maxCollisions}/${g.bucketUpperBound}). Buckets fill unevenly because chunk addresses are effectively random, so the first one fills well before the batch looks full.`,
     };
   }
+
+  const used = g.totalChunks / g.firstFullChunks;
+  if (used >= 0.6) {
+    return {
+      level: 'warning',
+      message: `${g.totalChunks.toLocaleString()} chunks stored against roughly ${g.firstFullChunks.toLocaleString()} before the first bucket fills — about ${(used * 100).toFixed(0)}% of what this batch can take, despite the nominal capacity being far larger.`,
+    };
+  }
+
   return {
     level: 'good',
-    message: `The fullest bucket is at ${pct.toFixed(1)}% (${g.maxCollisions}/${g.bucketUpperBound}). Plenty of headroom in every bucket.`,
+    message: `The fullest bucket is at ${pct.toFixed(1)}% (${g.maxCollisions}/${g.bucketUpperBound}), and ${g.totalChunks.toLocaleString()} chunks are stored against roughly ${g.firstFullChunks.toLocaleString()} before the first bucket fills.`,
   };
 }
