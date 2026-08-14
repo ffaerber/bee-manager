@@ -461,10 +461,6 @@ export function createServer(deps: ServerDeps) {
           const { newDepth, confirm } = body as { newDepth?: number; confirm?: boolean };
           const target = newDepth ?? b.depth + 1;
 
-          if (b.immutableFlag) {
-            set.status = 409;
-            return { error: 'this batch is immutable and cannot be diluted — only a new batch can give it more room' };
-          }
           if (target <= b.depth) {
             set.status = 400;
             return { error: `depth can only increase; batch is already depth ${b.depth}` };
@@ -483,8 +479,18 @@ export function createServer(deps: ServerDeps) {
           const perChunk = amountForDuration(r.chain.currentPrice, seconds, r.msPerBlock);
           const restoreCost = costPlur(perChunk, target);
 
+          /**
+           * increaseDepth divides the remaining per-chunk balance by 2^steps
+           * and reverts with InsufficientBalance if the result falls below the
+           * contract's minimum. A nearly-expired batch therefore cannot be
+           * diluted at all — worth saying before the transaction, not after it
+           * reverts and the gas is gone.
+           */
+          const tooThin = ttlAfter < r.chain.minimumValidityBlocks * (r.msPerBlock / 1000);
+
           const preview = {
             batchId: params.id,
+            tooThin,
             fromDepth: b.depth,
             toDepth: target,
             capacityBefore: capacityBytes(b.depth).toString(),
@@ -499,7 +505,10 @@ export function createServer(deps: ServerDeps) {
           };
 
           if (!confirm) return json({ preview, confirmRequired: true });
-
+          if (tooThin) {
+            set.status = 409;
+            return { error: 'after dilution the remaining balance per chunk would fall below the contract minimum — top up first, then dilute' };
+          }
           if (cfg.dryRun) return json({ dryRun: true, wouldDilute: preview });
 
           const actionId = db.recordAction({

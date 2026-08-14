@@ -35,8 +35,8 @@ export interface BucketGrid {
   totalChunks: number;
   usedBuckets: number;
   emptyBuckets: number;
-  /** Buckets at capacity. On an immutable batch, ANY of these means writes to
-   *  that bin already fail; on a mutable batch they silently recycle. */
+  /** Buckets at capacity. On an immutable batch, ANY of these makes the whole
+   *  batch refuse uploads; on a mutable batch they silently recycle. */
   fullBuckets: number;
   /** Occupancy of the fullest bucket — what `utilizationRatio` reflects. */
   maxCollisions: number;
@@ -103,10 +103,11 @@ export function buildGrid(r: BucketReport): BucketGrid {
  * How close this batch is to refusing writes, and why.
  *
  * Deliberately keyed off the fullest bucket rather than the average, because
- * the fullest bucket is what actually rejects an upload. An immutable batch
- * with one full bin is already failing for part of the address space and cannot
- * be diluted out of it; a mutable one is silently dropping its oldest chunks
- * there, which is data loss that no error surfaces.
+ * the fullest bucket is what actually rejects an upload. On an immutable batch
+ * one full bin makes the WHOLE batch refuse uploads; on a mutable one it
+ * silently drops the oldest chunks there, which is data loss no error surfaces.
+ * Dilution is the fix in both cases — it doubles every bucket's capacity, at
+ * the cost of half the remaining life.
  */
 export function bucketPressure(g: BucketGrid, immutable: boolean): {
   level: 'good' | 'warning' | 'critical';
@@ -118,7 +119,7 @@ export function bucketPressure(g: BucketGrid, immutable: boolean): {
     return immutable
       ? {
           level: 'critical',
-          message: `${g.fullBuckets.toLocaleString()} of ${(1 << g.bucketDepth).toLocaleString()} buckets are full. This batch is immutable, so uploads whose address lands in one of them already fail, and dilution cannot fix it — only a new batch can.`,
+          message: `${g.fullBuckets.toLocaleString()} of ${(1 << g.bucketDepth).toLocaleString()} buckets are full. Being immutable, this batch treats that as 100% utilised and refuses every further upload, not just those landing in a full bucket. Diluting doubles each bucket's capacity and makes it usable again — at the cost of half the remaining life.`,
         }
       : {
           level: 'warning',

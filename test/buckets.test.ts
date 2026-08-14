@@ -84,8 +84,18 @@ describe('bucketPressure', () => {
   it('is critical for an immutable batch with any full bucket', () => {
     const p = bucketPressure(withFull, true);
     expect(p.level).toBe('critical');
-    // The operationally important part: dilution does not rescue this.
-    expect(p.message).toMatch(/dilution cannot fix it|new batch/i);
+    // Critical because ONE full bucket makes an immutable batch refuse every
+    // upload, not only those hashing into that bucket.
+    expect(p.message).toMatch(/refuses every further upload/i);
+  });
+
+  it('tells an immutable batch that dilution is the fix', () => {
+    // This assertion previously said the opposite, encoding a belief that Bee
+    // refuses to dilute immutable batches. It does not: DiluteBatch checks only
+    // that depth increases, and the on-chain increaseDepth never reads
+    // immutableFlag. Dilution doubles bucket capacity and is the only thing
+    // that makes such a batch usable again.
+    expect(bucketPressure(withFull, true).message).toMatch(/dilut/i);
   });
 
   it('is a warning for a mutable batch, which loses data instead of failing', () => {

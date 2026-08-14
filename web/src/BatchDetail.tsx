@@ -544,10 +544,9 @@ function Vitals({ b, data, state, onDone }: {
           title={b.managed ? 'Buy more time at the current size' : 'Unmanaged batches are set to expire'}>
           Extend life
         </button>
-        <button disabled={!b.managed || b.immutableFlag}
+        <button disabled={!b.managed}
           onClick={() => setOpen(open === 'room' ? null : 'room')}
-          title={b.immutableFlag ? 'Immutable batches cannot be diluted'
-            : b.managed ? 'More room, at the cost of half the remaining life'
+          title={b.managed ? 'More room, at the cost of half the remaining life'
             : 'Unmanaged batches are set to expire'}>
           Add capacity
         </button>
@@ -693,18 +692,6 @@ function Dilute({ b, onDone }: { b: Batch; onDone: () => Promise<void> }) {
   const [steps, setSteps] = useState(1);
   useEffect(() => { setPreview(null); setDone(null); }, [steps, b.depth]);
 
-  if (b.immutableFlag) {
-    return (
-      <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
-        <h2 style={{ marginBottom: 8 }}>Dilute</h2>
-        <p className="muted" style={{ fontSize: 12 }}>
-          Not available: this batch is immutable. Bee will not dilute one, and it would not help —
-          on an immutable batch a full bucket rejects writes permanently. More room means a new batch.
-        </p>
-      </div>
-    );
-  }
-
   async function go(confirm: boolean) {
     setBusy(true); setErr(null);
     try {
@@ -729,6 +716,8 @@ function Dilute({ b, onDone }: { b: Batch; onDone: () => Promise<void> }) {
         Doubles capacity per depth step and <strong>halves remaining life</strong> — the amount already
         paid has to cover twice as many chunks. Top up afterwards, not before, or half the top-up is
         spread thin along with everything else.
+        {b.immutableFlag && ' This batch is immutable, so a single full bucket makes it refuse every'
+          + ' upload — diluting is what makes it usable again.'}
       </p>
 
       <div className="row">

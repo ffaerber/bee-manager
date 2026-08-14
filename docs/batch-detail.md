@@ -62,8 +62,7 @@ means the batch is set to expire; spending on it is nearly always a mistake, and
 was one: 63 xBZZ went onto a deliberately expiring depth-24 batch because
 nothing stopped it.
 
-`Add capacity` is additionally disabled on immutable batches, which cannot be
-diluted at all.
+`Add capacity` works on immutable batches too — see Dilute below.
 
 ## The map
 
@@ -125,8 +124,20 @@ the amount already paid now covers twice as many chunk slots. It adds nothing;
 it converts time into space.
 
 Preview → Confirm, 1–3 steps. Irreversible — depth never decreases. The preview
-leads with the TTL loss and what restoring it would cost. Refused on immutable
-batches: Bee will not dilute one, and it would not help.
+leads with the TTL loss and what restoring it would cost.
+
+**Immutable batches can be diluted**, contrary to what this page said earlier.
+Verified in the Bee source (`DiluteBatch` checks only that depth increases) and
+in the contract (`PostageStamp.increaseDepth` never reads `immutableFlag`). It
+is in fact the *only* rescue for an immutable batch that has filled a bucket:
+at that point the batch refuses every upload, and doubling bucket capacity is
+what makes it usable again.
+
+The real restriction is balance, not mutability. `increaseDepth` divides the
+remaining per-chunk balance by 2^steps and reverts with `InsufficientBalance`
+if the result falls below the contract minimum — so a nearly-expired batch must
+be topped up *before* it can be diluted. The preview flags this rather than
+letting the transaction revert.
 
 ## Files
 

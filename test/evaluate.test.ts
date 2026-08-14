@@ -97,9 +97,14 @@ describe('dilution', () => {
     expect(p.reason).toContain('95.0% full');
   });
 
-  it('refuses to dilute an immutable batch', () => {
+  it('dilutes an immutable batch too — that is the only rescue for one', () => {
+    // This asserted the opposite, on the belief that Bee refuses to dilute
+    // immutable batches. Verified against the source: DiluteBatch checks only
+    // that depth increases, and PostageStamp.increaseDepth never reads
+    // immutableFlag. A full bucket makes an immutable batch refuse ALL
+    // uploads, so dilution is the difference between dead and usable.
     const p = evaluateBatch({ ...full, immutableFlag: true }, ctx(funded));
-    expect(p.kind).not.toBe('dilute');
+    expect(p.kind).toBe('dilute');
   });
 
   it('honours DILUTE_ENABLED=false', () => {

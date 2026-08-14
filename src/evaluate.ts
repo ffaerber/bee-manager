@@ -144,9 +144,14 @@ export function evaluateBatch(batch: Batch, ctx: EvalContext): Plan {
   // Capacity first: diluting halves the remaining TTL, so it must happen before
   // the top-up that brings TTL back to target — otherwise half of what we just
   // paid for is thrown away.
+  // Immutable batches are NOT excluded. That exclusion was based on a belief
+  // that Bee refuses to dilute them, which the source disproves: DiluteBatch
+  // checks only that depth increases, and the on-chain increaseDepth never
+  // reads immutableFlag. Dilution is in fact the only rescue for an immutable
+  // batch that has filled a bucket — at that point it refuses ALL uploads, and
+  // doubling bucket capacity is what makes it usable again.
   const needsDilute =
     c.diluteEnabled &&
-    !batch.immutableFlag &&
     batch.depth < p.maxAutoDiluteDepth &&
     batch.utilizationRatio >= diluteTriggerFor(batch.depth, p.diluteWhenUtilizationAbove);
 
