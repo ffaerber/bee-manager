@@ -6,7 +6,7 @@
     "dev": "bun --watch src/index.ts",
     "start": "bun src/index.ts",
     "test": "bun test",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && cd web && tsc --noEmit",
     "build:web": "cd web && vite build"
   },
   "dependencies": {

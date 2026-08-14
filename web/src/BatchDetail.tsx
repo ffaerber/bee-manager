@@ -145,7 +145,7 @@ export function BatchDetail({ batchId, state, onChange }: {
                 sub={`${data.totalChunks.toLocaleString()} chunks`} />
               <Stat label="Capacity paid for" value={fmtBytes(data.capacityBytes)}
                 sub={`depth ${data.depth} · rented whether used or not`} />
-              <Stat label={b?.immutableFlag ? 'Capacity usable' : 'Before data loss'}
+              <Stat label={batch?.immutableFlag ? 'Capacity usable' : 'Before data loss'}
                 value={fmtBytes(data.firstFullChunks * 4096)}
                 sub={`~${data.firstFullChunks.toLocaleString()} chunks · ${Math.round(data.capacityBytes / (data.firstFullChunks * 4096))}x less than paid for`} />
               <Stat label="Buckets used" value={data.usedBuckets.toLocaleString()}
@@ -167,7 +167,7 @@ export function BatchDetail({ batchId, state, onChange }: {
             <p className="muted" style={{ fontSize: 12, marginTop: 10 }}>
               Chunk addresses are effectively random, so buckets fill unevenly and the first one
               reaches capacity long before the batch does — a birthday problem, not a rounding
-              error. {b?.immutableFlag
+              error. {batch?.immutableFlag
                 ? 'On an immutable batch that first full bucket is the end: the whole batch reports 100% utilised and refuses every further upload until it is diluted.'
                 : 'On a mutable batch nothing stops there — that bucket begins recycling its oldest chunk on each new collision, so the batch keeps accepting and quietly loses data instead. It cannot fill up; it can only become lossier.'}
             </p>

@@ -22,9 +22,17 @@ jobs:
         # Build the dashboard first: the served artifact affects routing (the
         # root path is the dashboard when present, a status document when not),
         # and CI should exercise what actually ships.
+        #
+        # typecheck covers BOTH the server and web/. Neither was checked here
+        # before, and web/ was not checked anywhere at all: the root tsconfig
+        # includes only src/ and test/, and Vite strips types without checking
+        # them. Every .tsx shipped unchecked, which is how a reference to an
+        # undefined variable reached production and broke the batch page.
         run: |
           bun install
-          (cd web && bun install && bun run build)
+          (cd web && bun install)
+          bun run typecheck
+          (cd web && bun run build)
           bun test
 
       - name: Login to GitHub Container Registry
