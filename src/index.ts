@@ -13,12 +13,19 @@ import { Alerter } from './alerts';
 import { Poller } from './poller';
 import { createServer } from './server';
 import { PriceFeed } from './price';
+import { seedSettings } from './settings';
 import { readFileSync } from 'node:fs';
 
 const cfg = loadConfig();
 const db = new Db(cfg.dbPath);
 const bee = new BeeClient(cfg.beeUrl, cfg.beeTimeoutMs, cfg.beeWriteTimeoutMs, cfg.beeUploadTimeoutMs);
 const alerter = new Alerter(db, cfg.webhookUrl, cfg.alertCooldownMs);
+// First boot only: copy the environment into the settings table, which is
+// authoritative from then on. Compose changes after this have no effect —
+// that is the point, so there is one place a value lives.
+const seeded = seedSettings(db, cfg);
+if (seeded.length) console.log(`[config] seeded ${seeded.length} settings from the environment`);
+
 const poller = new Poller(cfg, bee, db, alerter);
 /**
  * Docker swarm mounts secrets as files, so ADMIN_TOKEN_FILE is the way to keep

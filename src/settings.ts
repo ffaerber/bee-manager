@@ -1,43 +1,51 @@
 /**
- * Runtime settings: the environment, with dashboard overrides layered on top.
+ * Runtime settings. The database is the source of truth.
  *
- * ── The rule that makes this safe ──
+ * The environment **seeds** these on first run and is ignored afterwards, so
+ * there is exactly one place a value lives and one number to read. An earlier
+ * version layered dashboard overrides on top of the environment and treated the
+ * env value as a ceiling for spend caps; that was safer on paper and confusing
+ * in practice — every setting showed three numbers (environment, override, in
+ * force) and you had to work out which one was real.
  *
- * The dashboard may LOWER a spend cap freely, and may raise one only as far as
- * the environment allows. The env value is the ceiling, not merely the default.
+ * What replaces the ceiling is a confirmation. Loosening a guard — raising a
+ * spend cap, lowering a wallet floor — needs an explicit second step, the same
+ * arm-then-confirm the app uses everywhere it spends. That keeps the decision
+ * deliberate without making it impossible, which is the same correction that
+ * applied to blocking manual top-ups on unmanaged batches: inform, do not
+ * forbid.
  *
- * Without that, the caps would be advisory: anything holding the admin token
- * could raise the per-action cap and then spend to it, and the guardrail that
- * bounds an automated refiller pointed at a live wallet would exist only until
- * something decided otherwise. Keeping the ceiling in the environment means it
- * lives in the deployment repo, where a change is a reviewed commit rather than
- * a click.
- *
- * The protective floors invert the same rule: MIN_WALLET_* may be raised from
- * the dashboard but never lowered, because a higher floor is the cautious
- * direction.
- *
- * Settings with no bearing on spending — thresholds, the dilute percentage, the
- * webhook — are freely editable, since the worst case is a badly tuned monitor
- * rather than a drained wallet.
+ * Bootstrap settings cannot move here and stay in the environment: BEE_URL and
+ * DB_PATH are needed before this table can be read at all, and ADMIN_TOKEN
+ * authenticates the page that would edit them.
  */
 
 import type { Config } from './config';
 import { bzzToPlur, plurToBzz } from './math';
 
-/** How a setting may be moved relative to its environment value. */
-type Bound = 'free' | 'atMost' | 'atLeast';
+/**
+ * Whether loosening this setting needs an explicit confirmation.
+ *
+ * `looserWhen` names the direction that weakens a guard — 'higher' for a spend
+ * cap, 'lower' for a balance floor. Tightening is always allowed outright,
+ * because the cautious direction should never need a ceremony.
+ */
+type Guard = 'higher' | 'lower' | null;
 
 interface Spec {
   /** Key in the settings table. */
   key: string;
   kind: 'bool' | 'int' | 'float' | 'bzz' | 'string';
-  bound: Bound;
+  /** Direction that weakens this guard, or null when it guards nothing. */
+  looserWhen: Guard;
   /** Human label for the dashboard. */
   label: string;
   hint?: string;
+  /** Shown when confirming a loosening change. */
+  risk?: string;
   min?: number;
   max?: number;
+  group: 'automation' | 'thresholds' | 'limits' | 'alerts';
 }
 
 /**
@@ -47,29 +55,40 @@ interface Spec {
  * — and needs a restart, so it is deliberately not editable at runtime.
  */
 export const EDITABLE: Spec[] = [
-  { key: 'autoTopupEnabled', kind: 'bool', bound: 'free', label: 'Auto top-up' },
-  { key: 'dryRun', kind: 'bool', bound: 'free', label: 'Dry run', hint: 'plan but never spend' },
-  { key: 'topupWhenTtlBelowDays', kind: 'int', bound: 'free', min: 1, max: 3650,
-    label: 'Top up when life falls below', hint: 'days' },
-  { key: 'topupTargetTtlDays', kind: 'int', bound: 'free', min: 2, max: 3650,
-    label: 'Top up to', hint: 'days' },
-  { key: 'diluteEnabled', kind: 'bool', bound: 'free', label: 'Auto dilute' },
-  { key: 'diluteWhenUtilizationAbove', kind: 'float', bound: 'free', min: 0.1, max: 1,
-    label: 'Dilute when fullest bucket exceeds', hint: '0–1' },
-  { key: 'maxAutoDiluteDepth', kind: 'int', bound: 'atMost', min: 17, max: 41,
-    label: 'Never auto-dilute past depth', hint: 'capped by the environment' },
-  { key: 'maxTopupBzzPerBatch', kind: 'bzz', bound: 'atMost',
-    label: 'Max per action', hint: 'xBZZ — cannot exceed the environment ceiling' },
-  { key: 'maxTopupBzzPerDay', kind: 'bzz', bound: 'atMost',
-    label: 'Max per 24h', hint: 'xBZZ — cannot exceed the environment ceiling' },
-  { key: 'minWalletBzz', kind: 'bzz', bound: 'atLeast',
-    label: 'Wallet floor', hint: 'xBZZ — may only be raised' },
-  { key: 'minWalletXdai', kind: 'float', bound: 'atLeast', min: 0, max: 100,
-    label: 'Gas floor', hint: 'xDAI — may only be raised' },
-  { key: 'walletLowRunwayDays', kind: 'int', bound: 'free', min: 1, max: 3650,
-    label: 'Warn when runway below', hint: 'days' },
-  { key: 'webhookUrl', kind: 'string', bound: 'free', label: 'Webhook URL',
-    hint: 'where alerts are POSTed' },
+  { group: 'automation', key: 'autoTopupEnabled', kind: 'bool', looserWhen: null,
+    label: 'Auto top-up', hint: 'renew batches without asking' },
+  { group: 'automation', key: 'dryRun', kind: 'bool', looserWhen: null,
+    label: 'Dry run', hint: 'plan everything, spend nothing' },
+  { group: 'automation', key: 'diluteEnabled', kind: 'bool', looserWhen: null,
+    label: 'Auto dilute', hint: 'add capacity when a bucket nears full' },
+
+  { group: 'thresholds', key: 'topupWhenTtlBelowDays', kind: 'int', looserWhen: null,
+    min: 1, max: 3650, label: 'Top up when life falls below', hint: 'days' },
+  { group: 'thresholds', key: 'topupTargetTtlDays', kind: 'int', looserWhen: null,
+    min: 2, max: 3650, label: 'Top up to', hint: 'days — the size of each top-up' },
+  { group: 'thresholds', key: 'diluteWhenUtilizationAbove', kind: 'float', looserWhen: null,
+    min: 0.1, max: 1, label: 'Dilute when fullest bucket exceeds', hint: '0–1' },
+
+  { group: 'limits', key: 'maxTopupBzzPerBatch', kind: 'bzz', looserWhen: 'higher',
+    label: 'Max per action', hint: 'xBZZ',
+    risk: 'Raising this is the last stop between a mis-typed duration and the wallet.' },
+  { group: 'limits', key: 'maxTopupBzzPerDay', kind: 'bzz', looserWhen: 'higher',
+    label: 'Max per 24 hours', hint: 'xBZZ',
+    risk: 'This bounds a runaway loop rather than one action. Raising it widens the worst day.' },
+  { group: 'limits', key: 'maxAutoDiluteDepth', kind: 'int', looserWhen: 'higher',
+    min: 17, max: 41, label: 'Never auto-dilute past depth', hint: 'depth',
+    risk: 'Dilution cannot be undone and doubles every future top-up. Each extra depth doubles it again.' },
+  { group: 'limits', key: 'minWalletBzz', kind: 'bzz', looserWhen: 'lower',
+    label: 'Keep at least', hint: 'xBZZ in the wallet',
+    risk: 'This reserve is what stops automation spending the wallet to nothing.' },
+  { group: 'limits', key: 'minWalletXdai', kind: 'float', looserWhen: 'lower',
+    min: 0, max: 100, label: 'Keep at least', hint: 'xDAI for gas',
+    risk: 'Below this a transaction cannot land, so a top-up would fail after being authorised.' },
+
+  { group: 'alerts', key: 'walletLowRunwayDays', kind: 'int', looserWhen: null,
+    min: 1, max: 3650, label: 'Warn when runway below', hint: 'days' },
+  { group: 'alerts', key: 'webhookUrl', kind: 'string', looserWhen: null,
+    label: 'Webhook URL', hint: 'where alerts are POSTed — unset means nothing is announced' },
 ];
 
 const BY_KEY = new Map(EDITABLE.map((s) => [s.key, s]));
@@ -95,28 +114,46 @@ export function envValue(cfg: Config, key: string): string | number | boolean | 
 }
 
 /**
- * Clamp a requested value against its environment bound.
+ * Would this change weaken a guard?
  *
- * Returns the value actually applied plus whether it was clamped, so the
- * dashboard can say "your 50 became 5" rather than silently disagreeing with
- * the field the user just typed.
+ * Used to decide whether a confirmation is required. Tightening never needs
+ * one — the cautious direction should not have a ceremony attached to it.
  */
-export function clampToEnv(cfg: Config, key: string, requested: number): { value: number; clamped: boolean } {
+export function isLoosening(key: string, current: number, next: number): boolean {
   const spec = BY_KEY.get(key);
-  if (!spec) return { value: requested, clamped: false };
-  const env = envValue(cfg, key);
-  if (typeof env !== 'number') return { value: requested, clamped: false };
-  if (spec.bound === 'atMost' && requested > env) return { value: env, clamped: true };
-  if (spec.bound === 'atLeast' && requested < env) return { value: env, clamped: true };
-  return { value: requested, clamped: false };
+  if (!spec?.looserWhen) return false;
+  return spec.looserWhen === 'higher' ? next > current : next < current;
+}
+
+/** The risk sentence shown when confirming a loosening change. */
+export function riskOf(key: string): string | null {
+  return BY_KEY.get(key)?.risk ?? null;
 }
 
 /**
- * Apply stored overrides to a config, honouring the bounds.
+ * Seed the settings table from the environment, once.
  *
- * Pure, and called fresh wherever the config is read, so a change takes effect
- * on the next poll or request rather than at the next restart.
+ * Only ever writes keys that are absent, so this runs on first boot and is a
+ * no-op forever after. That is what makes the database authoritative rather
+ * than a layer on top of the environment: after seeding, changing a compose
+ * value has no effect and the dashboard is the only place a value lives.
  */
+export function seedSettings(
+  db: { settings(): Record<string, string>; setSetting(k: string, v: string | null): void },
+  cfg: Config,
+): string[] {
+  const have = db.settings();
+  const seeded: string[] = [];
+  for (const spec of EDITABLE) {
+    if (spec.key in have) continue;
+    const v = envValue(cfg, spec.key);
+    if (v === null || v === undefined) continue;
+    db.setSetting(spec.key, String(v));
+    seeded.push(spec.key);
+  }
+  return seeded;
+}
+
 export function applySettings(cfg: Config, stored: Record<string, string>): Config {
   const out: Config = { ...cfg };
 
@@ -139,7 +176,7 @@ export function applySettings(cfg: Config, stored: Record<string, string>): Conf
 
     const n = Number(raw);
     if (!Number.isFinite(n)) continue;
-    const { value } = clampToEnv(cfg, spec.key, n);
+    const value = n;
 
     switch (spec.key) {
       case 'topupWhenTtlBelowDays': out.topupWhenTtlBelowSec = value * 86_400; break;
@@ -154,11 +191,21 @@ export function applySettings(cfg: Config, stored: Record<string, string>): Conf
     }
   }
 
+  // ── coherence, enforced last since each half is edited independently ──
+
   // A target at or below the trigger would re-fire and spend every cycle.
-  // Enforced after merging, since either half can come from either layer.
   if (out.topupTargetTtlSec <= out.topupWhenTtlBelowSec) {
     out.topupTargetTtlSec = cfg.topupTargetTtlSec;
     out.topupWhenTtlBelowSec = cfg.topupWhenTtlBelowSec;
+  }
+
+  // A per-action cap above the daily cap is a cap that can never be respected:
+  // the first action would exhaust the day. loadConfig rejects this pairing in
+  // the environment, and now that the database is authoritative the same rule
+  // has to hold here — otherwise the UI could store a combination the service
+  // would refuse to start with.
+  if (out.maxTopupPlurPerBatch > out.maxTopupPlurPerDay) {
+    out.maxTopupPlurPerBatch = out.maxTopupPlurPerDay;
   }
 
   return out;

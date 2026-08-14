@@ -30,7 +30,7 @@ import { checkCaps, policyFor } from './evaluate';
 import type { Config } from './config';
 import { PriceFeed } from './price';
 import { buildGrid, bucketPressure } from './buckets';
-import { EDITABLE, applySettings, clampToEnv, envValue } from './settings';
+import { EDITABLE, applySettings, envValue, isLoosening, riskOf } from './settings';
 
 export interface ServerDeps {
   cfg: Config;
@@ -181,11 +181,14 @@ export function createServer(deps: ServerDeps) {
           return json({
             settings: EDITABLE.map((spec) => ({
               ...spec,
-              envValue: envValue(cfg, spec.key),
-              override: stored[spec.key] ?? null,
-              effective: envValue(eff, spec.key),
+              value: envValue(eff, spec.key),
             })),
-            /** Needs a restart; shown read-only so their absence is not a mystery. */
+            /**
+             * Bootstrap only. These are read before the settings table exists
+             * or before the request is authenticated, so they cannot live in
+             * it. Shown read-only rather than omitted, so their absence from
+             * the editable list is not a mystery.
+             */
             fixed: {
               beeUrl: cfg.beeUrl,
               pollIntervalMs: cfg.pollIntervalMs,
@@ -196,50 +199,49 @@ export function createServer(deps: ServerDeps) {
         })
 
         .patch('/settings', ({ body, set }) => {
-          const patch = body as Record<string, string | number | boolean | null>;
+          const { confirm, ...patch } = body as Record<string, any>;
+          const current = applySettings(cfg, db.settings());
           const applied: Record<string, unknown> = {};
-          const clampedKeys: string[] = [];
+          const needsConfirm: { key: string; label: string; from: unknown; to: unknown; risk: string | null }[] = [];
 
           for (const [key, raw] of Object.entries(patch)) {
             const spec = EDITABLE.find((x) => x.key === key);
             if (!spec) { set.status = 400; return { error: `unknown or non-editable setting: ${key}` }; }
 
-            if (raw === null) { db.setSetting(key, null); applied[key] = null; continue; }
+            if (spec.kind === 'bool') { applied[key] = Boolean(raw); continue; }
+            if (spec.kind === 'string') { applied[key] = String(raw ?? ''); continue; }
 
-            if (spec.kind === 'bool') {
-              db.setSetting(key, String(Boolean(raw)));
-              applied[key] = Boolean(raw);
-              continue;
-            }
-            if (spec.kind === 'string') {
-              db.setSetting(key, String(raw));
-              applied[key] = String(raw);
-              continue;
-            }
             const n = Number(raw);
             if (!Number.isFinite(n)) { set.status = 400; return { error: `${key} must be a number` }; }
             if (spec.min !== undefined && n < spec.min) { set.status = 400; return { error: `${key} must be at least ${spec.min}` }; }
             if (spec.max !== undefined && n > spec.max) { set.status = 400; return { error: `${key} must be at most ${spec.max}` }; }
 
-            // Clamp against the environment bound and say so, rather than
-            // storing a number that will not be honoured.
-            const { value, clamped } = clampToEnv(cfg, key, n);
-            if (clamped) clampedKeys.push(key);
-            db.setSetting(key, String(value));
-            applied[key] = value;
+            // Loosening a guard is allowed, but never by accident. Tightening
+            // needs no ceremony — the cautious direction should be frictionless.
+            const now = envValue(current, key);
+            if (typeof now === 'number' && isLoosening(key, now, n)) {
+              needsConfirm.push({ key, label: spec.label, from: now, to: n, risk: riskOf(key) });
+            }
+            applied[key] = n;
           }
 
-          // Every change is in the ledger. These alter what the service is
-          // permitted to spend, so they belong in the same audit trail as the
-          // spends themselves.
+          if (needsConfirm.length && !confirm) {
+            return json({ confirmRequired: true, changes: needsConfirm });
+          }
+
+          for (const [k, v] of Object.entries(applied)) db.setSetting(k, String(v));
+
+          // Settings decide what this service may spend, so a change belongs in
+          // the same ledger as the spends themselves.
           db.recordAction({
             batchId: null, appName: 'dashboard', kind: 'config',
             amount: 0n, cost: 0n, status: 'confirmed',
-            reason: `settings: ${Object.entries(applied).map(([k, v]) => `${k}=${v}`).join(', ')}`,
+            reason: `settings: ${Object.entries(applied).map(([k, v]) => `${k}=${v}`).join(', ')}`
+              + (needsConfirm.length ? ' (loosened, confirmed)' : ''),
             error: null,
           });
 
-          return json({ applied, clamped: clampedKeys });
+          return json({ applied, loosened: needsConfirm.map((c) => c.key) });
         }, {
           body: t.Record(t.String(), t.Union([t.String(), t.Number(), t.Boolean(), t.Null()])),
         })

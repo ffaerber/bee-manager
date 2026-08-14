@@ -151,21 +151,26 @@ export const uploadToBatch = (id: string, file: File) =>
 /** One runtime setting, with its environment value and any override. */
 export interface SettingSpec {
   key: string; kind: 'bool' | 'int' | 'float' | 'bzz' | 'string';
-  bound: 'free' | 'atMost' | 'atLeast';
-  label: string; hint?: string; min?: number; max?: number;
-  envValue: string | number | boolean | null;
-  override: string | null;
-  effective: string | number | boolean | null;
+  group: 'automation' | 'thresholds' | 'limits' | 'alerts';
+  /** Direction that weakens this guard, or null when it guards nothing. */
+  looserWhen: 'higher' | 'lower' | null;
+  label: string; hint?: string; risk?: string; min?: number; max?: number;
+  /** The value in force. There is only one — the database is authoritative. */
+  value: string | number | boolean | null;
+}
+export interface SettingChange {
+  key: string; label: string; from: unknown; to: unknown; risk: string | null;
 }
 export interface SettingsResponse {
   settings: SettingSpec[];
   fixed: { beeUrl: string; pollIntervalMs: number; dbPath: string; maxUploadBytes: number };
 }
 export const getSettings = () => req<SettingsResponse>('/settings');
-export const patchSettings = (patch: Record<string, string | number | boolean | null>) =>
-  req<{ applied: Record<string, unknown>; clamped: string[] }>('/settings', {
-    method: 'PATCH', body: JSON.stringify(patch),
-  });
+export const patchSettings = (patch: Record<string, unknown>) =>
+  req<{
+    applied?: Record<string, unknown>; loosened?: string[];
+    confirmRequired?: boolean; changes?: SettingChange[];
+  }>('/settings', { method: 'PATCH', body: JSON.stringify(patch) });
 
 export const getState = () => req<State>('/state');
 export const getActions = () => req<Action[]>('/actions?limit=25');
