@@ -102,6 +102,8 @@ export const getBuckets = (id: string) => req<BucketGrid>(`/batches/${id}/bucket
 export interface TopupPreview {
   batchId: string; fromDays: number; toDays: number;
   costBzz: number; allowed: boolean; reason: string;
+  /** The batch is set to expire; spending on it is allowed but worth saying. */
+  unmanaged: boolean;
 }
 export const topup = (id: string, opts: { days?: number; confirm?: boolean }) =>
   req<{ preview?: TopupPreview; confirmRequired?: boolean; toppedUp?: TopupPreview; dryRun?: boolean; wouldTopup?: TopupPreview }>(
@@ -109,7 +111,8 @@ export const topup = (id: string, opts: { days?: number; confirm?: boolean }) =>
 
 /** Preview of what diluting would do. */
 export interface DilutePreview {
-  batchId: string; fromDepth: number; toDepth: number;
+  batchId: string; unmanaged: boolean; tooThin: boolean;
+  fromDepth: number; toDepth: number;
   capacityBeforeHuman: string; capacityAfterHuman: string;
   ttlDaysBefore: number; ttlDaysAfter: number;
   restoreToDays: number; restoreCostBzz: number; restoreAffordable: boolean;

@@ -1,10 +1,16 @@
 /**
- * Spending on an unmanaged batch is refused by the API, not merely greyed out.
+ * Manual actions work on an unmanaged batch, and say so.
  *
- * `unmanaged` means "I am letting this lapse" — it is the flag you set when a
- * batch has been replaced and should expire. Nothing stopped a manual top-up on
- * one, and 63 xBZZ went onto a deliberately expiring depth-24 batch as a
- * result. A disabled button is a hint; this is the guard.
+ * `managed` governs AUTOMATION — whether the poller acts on its own. It does
+ * not govern whether a human may act. An earlier version of this file asserted
+ * the opposite, blocking manual top-up and dilution with a 409; that conflated
+ * the two and removed the case that most needs them, keeping a superseded batch
+ * alive by hand while migrating off it.
+ *
+ * The guard was a reaction to a 63 xBZZ mistake whose real causes were a cap
+ * sized for a batch that no longer needed it and a confirm:true sent as a test.
+ * Both were fixed directly. What remains here is that the preview SAYS the
+ * batch is unmanaged, so spending on one is a visible decision.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import { Db } from '../src/db';
@@ -71,33 +77,36 @@ const post = (path: string, body: unknown) =>
     body: JSON.stringify(body),
   });
 
-describe('unmanaged batches refuse spending', () => {
-  it('refuses a top-up preview', async () => {
+describe('unmanaged batches accept manual actions', () => {
+  it('previews a top-up', async () => {
     const res = await post(`/api/admin/batches/${LAPSING}/topup`, { days: 90 });
-    expect(res.status).toBe(409);
-    expect((await res.json()).error).toMatch(/unmanaged/i);
-  });
-
-  it('refuses a top-up even with confirm set', async () => {
-    // The important one: a caller skipping the preview must not slip past.
-    const res = await post(`/api/admin/batches/${LAPSING}/topup`, { days: 90, confirm: true });
-    expect(res.status).toBe(409);
-  });
-
-  it('refuses dilution', async () => {
-    const res = await post(`/api/admin/batches/${LAPSING}/dilute`, { newDepth: 19, confirm: true });
-    expect(res.status).toBe(409);
-  });
-
-  it('still allows a managed batch', async () => {
-    const res = await post(`/api/admin/batches/${MANAGED}/topup`, { days: 90 });
     expect(res.status).toBe(200);
     expect((await res.json()).preview).toBeTruthy();
   });
 
-  it('the refusal says how to proceed deliberately', async () => {
-    const res = await post(`/api/admin/batches/${LAPSING}/topup`, { days: 90 });
-    expect((await res.json()).error).toMatch(/managed first/i);
+  it('flags the preview as unmanaged, so the UI can warn', () => {
+    return post(`/api/admin/batches/${LAPSING}/topup`, { days: 90 })
+      .then((r: Response) => r.json())
+      .then((b: any) => expect(b.preview.unmanaged).toBe(true));
+  });
+
+  it('previews dilution', async () => {
+    const res = await post(`/api/admin/batches/${LAPSING}/dilute`, { newDepth: 19 });
+    expect(res.status).toBe(200);
+    expect((await res.json()).preview.unmanaged).toBe(true);
+  });
+
+  it('does not flag a managed batch', async () => {
+    const res = await post(`/api/admin/batches/${MANAGED}/topup`, { days: 90 });
+    expect((await res.json()).preview.unmanaged).toBe(false);
+  });
+
+  it('still enforces the caps, which is the guard that matters', async () => {
+    // The protection against overspending is the cap, not the managed flag.
+    const res = await post(`/api/admin/batches/${LAPSING}/topup`, { days: 3650 });
+    const body = await res.json();
+    expect(body.preview.allowed).toBe(false);
+    expect(body.preview.reason).toMatch(/cap/i);
   });
 });
 

@@ -539,21 +539,18 @@ function Vitals({ b, data, state, onDone }: {
       </div>
 
       <div className="row" style={{ marginTop: 14 }}>
-        <button className={open === 'life' ? '' : 'primary'} disabled={!b.managed}
+        <button className={open === 'life' ? '' : 'primary'}
           onClick={() => setOpen(open === 'life' ? null : 'life')}
-          title={b.managed ? 'Buy more time at the current size' : 'Unmanaged batches are set to expire'}>
+          title="Buy more time at the current size">
           Extend life
         </button>
-        <button disabled={!b.managed}
-          onClick={() => setOpen(open === 'room' ? null : 'room')}
-          title={b.managed ? 'More room, at the cost of half the remaining life'
-            : 'Unmanaged batches are set to expire'}>
+        <button onClick={() => setOpen(open === 'room' ? null : 'room')}
+          title="More room, at the cost of half the remaining life">
           Add capacity
         </button>
         {!b.managed && (
           <span className="muted" style={{ fontSize: 12 }}>
-            This batch is unmanaged — it is set to expire and nothing will renew it.
-            Mark it managed below to spend on it.
+            Unmanaged — nothing renews this automatically. Both actions still work by hand.
           </span>
         )}
       </div>
@@ -661,6 +658,10 @@ function Topup({ b, onDone }: { b: Batch; onDone: () => Promise<void> }) {
           {preview.allowed
             ? ' Within caps. Depth and capacity are unchanged.'
             : ` Blocked: ${preview.reason}`}
+          {preview.unmanaged && preview.allowed && (
+            <> <strong>This batch is unmanaged</strong>, so nothing will renew it after this —
+              it will lapse once the time you are buying runs out.</>
+          )}
         </div>
       )}
       {done && <div className="warn" style={{ borderLeftColor: 'var(--good)', background: 'transparent' }}>{done}</div>}
@@ -745,7 +746,9 @@ function Dilute({ b, onDone }: { b: Batch; onDone: () => Promise<void> }) {
           Restoring it to {preview.restoreToDays} days afterwards would cost{' '}
           <strong>{preview.restoreCostBzz.toFixed(3)} xBZZ</strong>
           {!preview.restoreAffordable && ' — more than the wallet holds'}.
-          {b.managed && ' This batch is managed, so auto top-up will restore it on the next cycle, within the caps.'}
+          {b.managed
+            ? ' This batch is managed, so auto top-up will restore it on the next cycle, within the caps.'
+            : ' This batch is unmanaged, so nothing will restore that life automatically — top up by hand afterwards.'}
           {' '}Depth cannot be reduced again.
         </div>
       )}

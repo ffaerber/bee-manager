@@ -56,11 +56,16 @@ The capacity meter tracks the **fullest bucket**, not the average, because that
 is what actually stops a write. Bytes stored appear underneath as context.
 
 `Extend life` and `Add capacity` expand in place, so the meter stays on screen
-while you decide. Both are **disabled on an unmanaged batch** — and the API
-refuses too, since a greyed-out button is a hint rather than a guard. Unmanaged
-means the batch is set to expire; spending on it is nearly always a mistake, and
-was one: 63 xBZZ went onto a deliberately expiring depth-24 batch because
-nothing stopped it.
+while you decide. **Both work on an unmanaged batch.**
+
+`managed` governs *automation* — whether the poller acts on its own — not
+whether you may act. An earlier version blocked manual top-up and dilution on
+unmanaged batches, which conflated the two and removed the case that most needs
+them: keeping a superseded batch alive by hand while migrating off it. The
+preview instead says the batch is unmanaged and will lapse once the time being
+bought runs out, so it is a visible decision rather than a blocked one.
+
+What actually bounds overspending is the caps, not this flag.
 
 `Add capacity` works on immutable batches too — see Dilute below.
 
