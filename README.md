@@ -23,6 +23,29 @@ lives — it multiplies what that lifetime costs:
 
 <sub>* at a chain price of 70,638 PLUR/chunk/block. Identical lifetime in every row.</sub>
 
+Those capacities are **nominal**. Chunk addresses are effectively random, so the
+65,536 buckets fill unevenly and the first one reaches capacity long before the
+batch does — a birthday problem. Measured by simulation:
+
+| depth | nominal | first bucket full at | ratio |
+|---|---|---|---|
+| 17 | 131,072 chunks (537 MB) | ~311 chunks (1.3 MB) | 421x |
+| 18 | 262,144 chunks (1.07 GB) | ~7,815 chunks (32 MB) | 34x |
+| 19 | 524,288 chunks (2.15 GB) | ~67,850 chunks (278 MB) | 8x |
+| 20 | 1,048,576 chunks (4.3 GB) | ~277,432 chunks (1.1 GB) | 4x |
+
+What happens at that point is where the two batch types stop being comparable:
+
+- **immutable** — the whole batch reports 100% utilised and refuses every
+  further upload. That figure is its real capacity.
+- **mutable** — that one bucket starts recycling its oldest chunk. The batch
+  keeps working and keeps accepting; it is simply lossy from there, and more so
+  as more buckets fill. It never gets full, so the figure is not a limit but the
+  onset of silent data loss.
+
+Shallow batches are hit hardest, which cuts against "just buy a smaller one":
+depth 17 is the cheapest row and also the one whose usable share is 0.2%.
+
 Over-provisioning is therefore the usual reason stamps keep lapsing: the batch is
 so expensive that the wallet only ever buys a couple of months. Depth can be
 *increased* (dilute) but never reduced, so right-sizing means a new batch and a

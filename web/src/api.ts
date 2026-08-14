@@ -86,6 +86,8 @@ export interface BucketGrid {
   depth: number; bucketDepth: number; bucketUpperBound: number; side: number;
   totalChunks: number; usedBuckets: number; emptyBuckets: number; fullBuckets: number;
   maxCollisions: number; storedBytes: number; capacityBytes: number;
+  /** Chunks before the first bucket fills — where behaviour changes. */
+  firstFullChunks: number;
   /** Server's upload ceiling, so the browser can refuse before transferring. */
   maxUploadBytes: number;
   /** Chunk slots free batch-wide — an upper bound; buckets bind tighter. */

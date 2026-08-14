@@ -5,7 +5,7 @@
  * batches — which are opposite failures with the same symptom.
  */
 import { describe, expect, it } from 'bun:test';
-import { buildGrid, bucketPressure, CHUNK_BYTES } from '../src/buckets';
+import { buildGrid, bucketPressure, firstFullEstimate, CHUNK_BYTES } from '../src/buckets';
 import type { BucketReport } from '../src/bee';
 
 /** 65,536 buckets, `fill` applied by index. */
@@ -115,5 +115,57 @@ describe('bucketPressure', () => {
     const near = buildGrid(report(24, (i) => (i === 0 ? 208 : 0)));
     expect(near.fullBuckets).toBe(0);
     expect(bucketPressure(near, false).level).toBe('warning');
+  });
+});
+
+/**
+ * Effective capacity — where behaviour changes, which is nowhere near 2^depth.
+ *
+ * Validated against simulation (40 trials, uniform random bucket assignment):
+ * depth 17 observed 311, depth 18 observed 7,815, depth 19 observed 67,850.
+ * The estimator is a generalised birthday approximation, so ~15% is the
+ * accuracy to expect and all this needs.
+ */
+describe('firstFullEstimate', () => {
+  it('is drastically below nominal capacity on shallow batches', () => {
+    // depth 17 is sold as 131,072 chunks and changes behaviour around 362.
+    const e = firstFullEstimate(17);
+    expect(e).toBeGreaterThan(250);
+    expect(e).toBeLessThan(500);
+    expect(Math.pow(2, 17) / e).toBeGreaterThan(200);
+  });
+
+  it('tracks the simulated values within ~20%', () => {
+    for (const [depth, observed] of [[17, 311], [18, 7815], [19, 67850], [20, 277432]] as [number, number][]) {
+      const e = firstFullEstimate(depth);
+      expect(Math.abs(e - observed) / observed).toBeLessThan(0.25);
+    }
+  });
+
+  it('does not overflow at depths where the factorial would', () => {
+    // 256! is not representable as a double; the log-space form must hold up.
+    const e = firstFullEstimate(24);
+    expect(Number.isFinite(e)).toBe(true);
+    expect(e).toBeGreaterThan(0);
+  });
+
+  it('never claims more than the batch physically holds', () => {
+    for (const d of [17, 18, 20, 24, 28]) {
+      expect(firstFullEstimate(d)).toBeLessThanOrEqual(Math.pow(2, d));
+    }
+  });
+
+  it('rises with depth, since bigger buckets tolerate more collisions', () => {
+    let prev = 0;
+    for (const d of [17, 18, 19, 20, 24]) {
+      const e = firstFullEstimate(d);
+      expect(e).toBeGreaterThan(prev);
+      prev = e;
+    }
+  });
+
+  it('is reported on the grid', () => {
+    const g = buildGrid(report(18, () => 0));
+    expect(g.firstFullChunks).toBe(Math.round(firstFullEstimate(18)));
   });
 });

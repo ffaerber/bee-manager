@@ -143,7 +143,11 @@ export function BatchDetail({ batchId, state, onChange }: {
             <div className="tiles">
               <Stat label="Stored" value={fmtBytes(data.storedBytes)}
                 sub={`${data.totalChunks.toLocaleString()} chunks`} />
-              <Stat label="Capacity" value={fmtBytes(data.capacityBytes)} sub={`depth ${data.depth}`} />
+              <Stat label="Capacity paid for" value={fmtBytes(data.capacityBytes)}
+                sub={`depth ${data.depth} · rented whether used or not`} />
+              <Stat label={b?.immutableFlag ? 'Capacity usable' : 'Before data loss'}
+                value={fmtBytes(data.firstFullChunks * 4096)}
+                sub={`~${data.firstFullChunks.toLocaleString()} chunks · ${Math.round(data.capacityBytes / (data.firstFullChunks * 4096))}x less than paid for`} />
               <Stat label="Buckets used" value={data.usedBuckets.toLocaleString()}
                 sub={`of ${(1 << data.bucketDepth).toLocaleString()}`} />
               <Stat label="Fullest bucket" value={`${data.maxCollisions} / ${data.bucketUpperBound}`}
@@ -159,6 +163,14 @@ export function BatchDetail({ batchId, state, onChange }: {
               <Key color="var(--warning)" label="nearly full — 80%+" />
               <Key color="var(--critical)" label="at capacity" />
             </div>
+
+            <p className="muted" style={{ fontSize: 12, marginTop: 10 }}>
+              Chunk addresses are effectively random, so buckets fill unevenly and the first one
+              reaches capacity long before the batch does — a birthday problem, not a rounding
+              error. {b?.immutableFlag
+                ? 'On an immutable batch that first full bucket is the end: the whole batch reports 100% utilised and refuses every further upload until it is diluted.'
+                : 'On a mutable batch nothing stops there — that bucket begins recycling its oldest chunk on each new collision, so the batch keeps accepting and quietly loses data instead. It cannot fill up; it can only become lossier.'}
+            </p>
 
             <div className={`warn ${data.pressure.level === 'critical' ? 'err' : ''}`}
               style={data.pressure.level === 'good'
@@ -521,7 +533,14 @@ function Vitals({ b, data, state, onDone }: {
         </div>
 
         <div>
-          <div className="tile-label">Capacity used</div>
+          {/* The same percentage means opposite things. On an immutable batch
+              it is a countdown to refusing every upload; on a mutable one it is
+              how close the first bucket is to recycling, after which the batch
+              keeps working and quietly loses data. Naming both "Capacity used"
+              hid the difference that matters most. */}
+          <div className="tile-label">
+            {b.immutableFlag ? 'Capacity used' : 'Nearest bucket to recycling'}
+          </div>
           <div className="row" style={{ gap: 10, flexWrap: 'nowrap', margin: '4px 0 4px' }}>
             <span className={`meter ${roomSev}`} style={{ flex: 1, height: 12 }}>
               <i style={{ width: `${fullPct}%` }} />
@@ -535,6 +554,15 @@ function Vitals({ b, data, state, onDone }: {
               ? `fullest bucket ${data.maxCollisions} of ${data.bucketUpperBound} · ${fmtBytes(data.storedBytes)} stored`
               : 'fullest bucket — reading…'}
           </div>
+          {data && (
+            <div className="tile-sub" style={{ marginTop: 4 }}>
+              {b.immutableFlag
+                ? <>Refuses all uploads at ~{data.firstFullChunks.toLocaleString()} chunks
+                    ({fmtBytes(data.firstFullChunks * 4096)})</>
+                : <>Starts discarding oldest at ~{data.firstFullChunks.toLocaleString()} chunks
+                    ({fmtBytes(data.firstFullChunks * 4096)}) — then keeps accepting</>}
+            </div>
+          )}
         </div>
       </div>
 
