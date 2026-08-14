@@ -129,17 +129,25 @@ as `TOKEN` in `web/src/api.ts`, so the two cannot drift apart.
 
 Fiat is display-only and never enters a spending decision; see `src/price.ts`.
 
-## Mutable by default
+## Immutable by default
 
-Batches are bought **mutable** unless you ask otherwise. Bee's own default is
-immutable, and on an immutable batch the moment any single bucket fills the
-*whole batch* is treated as 100% utilised and refuses further uploads — with no
-dilution out of that state. A mutable batch recycles the oldest chunk in the
-full bucket instead, so it degrades gracefully.
+Batches are bought **immutable** unless you ask otherwise, and the wizard always
+asks rather than letting a default pass unseen — inheriting one silently is how
+two batches were bought immutable by accident.
 
-Immutability is fixed at creation, so the wrong choice means buying a
-replacement. Pass `{"immutable": true}` deliberately when you want write-once
-semantics and are sizing depth to never collide.
+The difference is only what happens when a bucket fills. An immutable batch
+refuses the write. A mutable one discards the oldest chunk in that bucket, with
+no error, so a reference you published simply stops resolving one day. For data
+meant to persist, refusing is the better failure.
+
+Immutability does **not** prevent topping up, and does not prevent dilution
+either — verified against Bee's `DiluteBatch`, which checks only that depth
+increases, and the on-chain `PostageStamp.increaseDepth`, which never reads
+`immutableFlag`. Dilution is in fact the only way to recover an immutable batch
+that has filled a bucket, since at that point it refuses every upload.
+
+Choose mutable for something rewritten often — a site you redeploy, a rolling
+cache — where recycling superseded chunks is what you want.
 
 ## Managing apps
 

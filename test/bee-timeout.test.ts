@@ -64,16 +64,30 @@ describe('buyBatch immutability default', () => {
     });
   }
 
-  it('defaults to MUTABLE — an immutable batch dies on the first full bucket', async () => {
+  it('defaults to IMMUTABLE — a mutable batch drops old chunks silently', async () => {
+    // This asserted mutable, on the belief that an immutable batch could not be
+    // topped up or diluted out of a full bucket. Both are false. What is left
+    // is the choice of failure: immutable refuses the write, mutable discards
+    // its oldest chunk with no error, so a stored reference stops resolving one
+    // day. Refusing is the better failure for data meant to persist.
     const seen: { headers?: Headers } = {};
     const s = captureServer(seen);
     try {
       await new BeeClient(`http://localhost:${s.port}`).buyBatch(1000n, 18);
+      expect(seen.headers?.get('immutable')).toBe('true');
+    } finally { s.stop(true); }
+  });
+
+  it('still honours an explicit mutable request', async () => {
+    const seen: { headers?: Headers } = {};
+    const s = captureServer(seen);
+    try {
+      await new BeeClient(`http://localhost:${s.port}`).buyBatch(1000n, 18, { immutable: false });
       expect(seen.headers?.get('immutable')).toBe('false');
     } finally { s.stop(true); }
   });
 
-  it('never leaves the flag to Bee, whose default is immutable', async () => {
+  it('never leaves the flag to Bee — the value is a decision, so it travels', async () => {
     const seen: { headers?: Headers } = {};
     const s = captureServer(seen);
     try {

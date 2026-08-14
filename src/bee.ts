@@ -249,14 +249,17 @@ export class BeeClient {
     if (depth <= 16) throw new BeeError(`depth must be greater than bucketDepth 16, got ${depth}`);
     if (amountPerChunk <= 0n) throw new BeeError('amount must be positive');
     const qs = opts.label ? `?label=${encodeURIComponent(opts.label)}` : '';
-    // Always send the flag rather than inheriting Bee's default, which is
-    // immutable. On an immutable batch, the moment ANY single bucket fills the
-    // whole batch is treated as 100% utilised and refuses further uploads —
-    // and it cannot be diluted out of that state. A mutable batch instead
-    // recycles the oldest chunk in the full bucket, so it degrades gracefully.
-    // Immutability is fixed at creation, so getting this wrong means buying a
-    // replacement; default to the recoverable option and make it explicit.
-    const headers: Record<string, string> = { immutable: String(opts.immutable ?? false) };
+    // Always send the flag explicitly rather than inheriting whatever Bee
+    // happens to default to. Silently inheriting it is how two batches were
+    // bought immutable by accident; the value is a decision, so it travels.
+    //
+    // Defaults to immutable, matching Bee. When a bucket fills, an immutable
+    // batch refuses the write while a mutable one discards its oldest chunk in
+    // that bucket — silently, with no error, so a stored reference just stops
+    // resolving. Refusing is the better failure for data meant to persist, and
+    // dilution recovers from it (verified against DiluteBatch and the on-chain
+    // increaseDepth, neither of which looks at immutableFlag).
+    const headers: Record<string, string> = { immutable: String(opts.immutable ?? true) };
     const d = await this.request(`/stamps/${amountPerChunk}/${depth}${qs}`, { method: 'POST', headers },
       { write: true, operation: `buyBatch(depth ${depth})` });
     return d.batchID;

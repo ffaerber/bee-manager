@@ -357,14 +357,21 @@ function Wizard({ state, onDone }: { state: State; onDone: () => void }) {
   const [depth, setDepth] = useState(18);
   const [label, setLabel] = useState('');
   /**
-   * Mutable by default, and asked explicitly.
+   * Immutable by default, and asked explicitly.
    *
-   * Bee's own default is immutable, and this wizard silently inherited it —
-   * which is how two immutable batches got bought by accident and had to be
-   * replaced. The choice is fixed at creation and cannot be changed, so it is
-   * worth a decision rather than a default nobody sees.
+   * The default was mutable for a while, on the belief that immutable batches
+   * could not be topped up. They can — and they can be diluted too, verified
+   * against the Bee source and the on-chain contract. With that gone, the
+   * remaining difference is what happens when a bucket fills, and immutable
+   * fails loudly where mutable fails silently: a mutable batch discards its
+   * oldest chunks with no error, so a reference simply stops resolving one day.
+   * Refusing the write is the better failure for stored data.
+   *
+   * Still asked rather than assumed: the choice is fixed at creation, and this
+   * wizard once inherited Bee's default without showing it, which is how two
+   * batches were bought immutable by accident.
    */
-  const [immutable, setImmutable] = useState(false);
+  const [immutable, setImmutable] = useState(true);
   const [ladder, setLadder] = useState<Ladder | null>(null);
   const [result, setResult] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);

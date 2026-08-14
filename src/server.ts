@@ -706,7 +706,7 @@ export function createServer(deps: ServerDeps) {
             reason: `manual buy: depth ${depth}, ${days}d`, error: null,
           });
           try {
-            const batchId = await bee.buyBatch(q.amountPerChunk, depth, { label, immutable });
+            const batchId = await bee.buyBatch(q.amountPerChunk, depth, { label, immutable: immutable ?? true });
             db.updateActionStatus(id, 'confirmed');
             if (label) db.setAppBatch(label, batchId);
             await alerter.send({

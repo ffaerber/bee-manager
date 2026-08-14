@@ -96,9 +96,14 @@ bar chart.
 
 ### Mutable or immutable
 
-Asked explicitly, defaulting to **mutable**. Bee's own default is immutable and
-this wizard silently inherited it once, which is how two immutable batches were
-bought by accident and had to be replaced. The choice is fixed at creation.
+Asked explicitly, defaulting to **immutable**. Still asked rather than assumed:
+this wizard once inherited Bee's default without showing it, which is how two
+batches were bought immutable by accident. The choice is fixed at creation.
+
+The default was mutable for a while, on the belief that immutable batches could
+not be topped up. They can, and they can be diluted too. With that gone, the
+difference is only which way the batch fails when a bucket fills — and immutable
+fails loudly where mutable fails silently.
 
 | | When a bucket fills | Use for |
 |---|---|---|
