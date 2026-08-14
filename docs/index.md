@@ -92,9 +92,25 @@ line; only batches needing something get their own.
 ## Create batch (modal)
 
 Depth and duration sliders, live cost tiles, a recommended depth, and a cost-by-depth
-bar chart. **Buy is arm-then-confirm** — the confirmation names depth, duration,
-cost and label, and any slider move disarms it, because depth and immutability
-cannot be changed after purchase.
+bar chart.
+
+### Mutable or immutable
+
+Asked explicitly, defaulting to **mutable**. Bee's own default is immutable and
+this wizard silently inherited it once, which is how two immutable batches were
+bought by accident and had to be replaced. The choice is fixed at creation.
+
+| | When a bucket fills | Use for |
+|---|---|---|
+| **Mutable** | recycles the oldest chunk in that bucket | a site you redeploy, anything rewritten often — superseded chunks make way. Cost: old data can be silently dropped, so a reference to a previous version may stop resolving |
+| **Immutable** | the *whole batch* refuses further uploads | write-once data — images, documents, an archive that must keep resolving. Nothing is ever evicted. Cost: one full bucket stops all writes until the batch is diluted |
+
+Note immutable does **not** prevent topping up, and does not prevent dilution
+either — see [batch-detail.md](batch-detail.md).
+
+**Buy is arm-then-confirm** — the confirmation names mutability, depth, duration,
+cost and label, and changing any of them disarms it, because depth and
+immutability cannot be changed after purchase.
 
 ## Recent actions
 

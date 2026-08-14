@@ -283,3 +283,14 @@ tr:hover .rowlink { text-decoration: underline; }
 tr.is-clickable { cursor: pointer; }
 tr.is-clickable:hover td { background: color-mix(in srgb, var(--series-1) 7%, transparent); }
 tr.is-clickable:hover .rowlink { text-decoration: underline; }
+
+/* Two named options with their consequences, rather than a bare checkbox: the
+   choice is permanent, so the trade-off belongs next to it. */
+.choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; }
+.choice {
+  display: flex; gap: 10px; align-items: flex-start; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px;
+}
+.choice.is-on { border-color: var(--series-1); background: color-mix(in srgb, var(--series-1) 6%, transparent); }
+.choice input { margin-top: 3px; accent-color: var(--series-1); }
+.choice .tile-sub { margin-top: 4px; }

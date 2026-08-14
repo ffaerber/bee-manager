@@ -356,6 +356,15 @@ function Wizard({ state, onDone }: { state: State; onDone: () => void }) {
   const [days, setDays] = useState(30);
   const [depth, setDepth] = useState(18);
   const [label, setLabel] = useState('');
+  /**
+   * Mutable by default, and asked explicitly.
+   *
+   * Bee's own default is immutable, and this wizard silently inherited it —
+   * which is how two immutable batches got bought by accident and had to be
+   * replaced. The choice is fixed at creation and cannot be changed, so it is
+   * worth a decision rather than a default nobody sees.
+   */
+  const [immutable, setImmutable] = useState(false);
   const [ladder, setLadder] = useState<Ladder | null>(null);
   const [result, setResult] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -398,7 +407,7 @@ function Wizard({ state, onDone }: { state: State; onDone: () => void }) {
   const [arm, setArm] = useState<{ depth: number; days: number; costBzz: number } | null>(null);
 
   // Changing the purchase invalidates any pending confirmation.
-  useEffect(() => { setArm(null); }, [depth, days]);
+  useEffect(() => { setArm(null); }, [depth, days, immutable]);
 
   async function doBuy() {
     if (!selected) return;
@@ -409,7 +418,7 @@ function Wizard({ state, onDone }: { state: State; onDone: () => void }) {
     }
     setBusy(true); setResult(null);
     try {
-      const r = await api.buy({ depth, days, label: label || undefined, confirm: true });
+      const r = await api.buy({ depth, days, label: label || undefined, immutable, confirm: true });
       if (r.dryRun) setResult(`DRY_RUN is on — would have bought depth ${depth} for ${r.wouldBuy.costBzz.toFixed(3)} ${TOKEN}.`);
       else { setResult(`Bought batch ${r.batchId.slice(0, 16)}… for ${r.cost.costBzz.toFixed(3)} ${TOKEN}.`); onDone(); }
     } catch (e: any) { setResult(`Failed: ${e.message}`); }
@@ -482,7 +491,40 @@ function Wizard({ state, onDone }: { state: State; onDone: () => void }) {
         </figure>
       )}
 
-      <div className="row" style={{ marginTop: 20 }}>
+      <div style={{ marginTop: 20 }}>
+        <div className="tile-label" style={{ marginBottom: 6 }}>
+          What happens when a bucket fills — <strong>fixed at creation, cannot be changed later</strong>
+        </div>
+        <div className="choices">
+          <label className={`choice${immutable ? '' : ' is-on'}`}>
+            <input type="radio" name="mutability" checked={!immutable}
+              onChange={() => setImmutable(false)} />
+            <div>
+              <div><strong>Mutable</strong> — recycles the oldest chunk</div>
+              <div className="tile-sub">
+                Never refuses an upload. Right for a site you redeploy, or anything rewritten often:
+                superseded chunks make way for the new ones. The cost is that old data can be
+                silently dropped, so a reference to a previous version may stop resolving.
+              </div>
+            </div>
+          </label>
+
+          <label className={`choice${immutable ? ' is-on' : ''}`}>
+            <input type="radio" name="mutability" checked={immutable}
+              onChange={() => setImmutable(true)} />
+            <div>
+              <div><strong>Immutable</strong> — never overwrites</div>
+              <div className="tile-sub">
+                Right for write-once data: images, documents, an archive that must keep resolving.
+                Nothing you store is ever evicted by a later upload. The cost is that one full
+                bucket makes the <em>whole</em> batch refuse further uploads until it is diluted.
+              </div>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <div className="row" style={{ marginTop: 16 }}>
         <input type="text" placeholder="label (e.g. pinkchainsaw)" value={label}
           onChange={(e) => setLabel(e.target.value)} />
         <button className={arm ? '' : 'primary'} disabled={busy || !selected?.affordable} onClick={doBuy}>
