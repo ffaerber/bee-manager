@@ -14,7 +14,6 @@ export default function App() {
   const [actions, setActions] = useState<Action[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [token, setTok] = useState(api.getToken());
-  const [busy, setBusy] = useState(false);
   const path = usePath();
   const batchId = batchIdFrom(path);
   const load = useCallback(async () => {
@@ -25,6 +24,12 @@ export default function App() {
   }, []);
 
   useEffect(() => { load(); const t = setInterval(load, 30_000); return () => clearInterval(t); }, [load]);
+
+  // Shared, because the control that does this now lives on /settings while
+  // the state it has to clear lives here.
+  const signOut = useCallback(() => {
+    api.setToken(''); setTok(''); setState(null); setErr('admin token required');
+  }, []);
 
   // The API is protected by the admin token, not by the proxy, so the page
   // itself is served to anyone — it is inert without a token. Treat "no token"
@@ -64,7 +69,7 @@ export default function App() {
     );
   }
 
-  if (isSettings(path)) return <Settings />;
+  if (isSettings(path)) return <Settings state={state} onPolled={load} onSignOut={signOut} />;
   if (batchId) return <BatchDetail batchId={batchId} state={state} onChange={load} />;
 
   if (!state) return <div className="wrap"><p className="muted">Loading…</p></div>;
@@ -73,27 +78,12 @@ export default function App() {
 
   return (
     <div className="wrap">
+      {/* Service status and the controls that act on the service itself now
+          live on /settings. What is left here is the batches — the header
+          carries identity and the way out, nothing that needs reading. */}
       <div className="spread" style={{ marginBottom: 16 }}>
         <h1 className="brand">Swarm stamp monitor</h1>
-        <div className="row">
-          {/* `is-live` pulses the dot. Only this chip gets it: reachability is
-              the one state here that is a live reading rather than a stored
-              fact, and animating the rest would spend attention on things that
-              are not changing. */}
-          <span className={`status is-live ${state.ok ? 'good' : 'critical'}`}>
-            {state.ok ? 'node reachable' : 'node unreachable'}
-          </span>
-          {armed && (
-            <span className="status good" title="Batches below the TTL threshold are topped up automatically, within the configured spend caps.">
-              auto top-up on
-            </span>
-          )}
-          <button onClick={async () => { setBusy(true); await api.poll().catch(() => {}); await load(); setBusy(false); }}
-            disabled={busy}>{busy ? 'Polling…' : 'Poll now'}</button>
-          <a className="backlink" {...link('/settings')}>Settings</a>
-          <button onClick={() => { api.setToken(''); setTok(''); setState(null); setErr('admin token required'); }}
-            title="Forget the token stored in this browser">Sign out</button>
-        </div>
+        <a className="backlink" {...link('/settings')}>Settings</a>
       </div>
 
       {/* Armed is the intended steady state, so it gets no banner — only the
@@ -103,6 +93,18 @@ export default function App() {
           worth interrupting for: it is precisely the condition in which a
           batch expires unnoticed, which is what this service exists to
           prevent. */}
+      {/* The healthy chip moved to /settings, but an unreachable node cannot
+          only be visible on a page you have to go looking for: every figure
+          below is then stale and nothing says so. Steady state is silent,
+          the exception interrupts — the same rule the auto top-up banner
+          below follows. */}
+      {!state.ok && (
+        <div className="banner warn err">
+          Node unreachable{state.error ? ` — ${state.error}` : ''}. Everything below is the last
+          good reading, not the current one, and nothing is being topped up while this lasts.
+        </div>
+      )}
+
       {!armed && (
         <div className="banner warn">
           Auto top-up is OFF ({!state.config.autoTopupEnabled ? 'AUTO_TOPUP_ENABLED=false' : 'DRY_RUN=true'})

@@ -143,13 +143,18 @@ h2 { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
   margin-bottom: 24px;
 }
 /* A card's own title gets a rule under it, so the heading reads as a band
-   across the panel rather than as the first line of its contents. */
+   across the panel rather than as the first line of its contents.
+   `.card-head` is the explicit form, for when the band is a title PLUS the
+   sentence explaining it — ruling between those two splits one thought. */
+.card > .card-head,
 .card > h2:first-child,
 .card > .spread:first-child {
   padding-bottom: 14px;
   border-bottom: 1px solid var(--grid);
   margin-bottom: 20px;
 }
+.card-head > h2 { margin-bottom: 4px; }
+.card-head > p { margin: 0; }
 .muted { color: var(--text-muted); }
 .secondary { color: var(--text-secondary); }
 .mono { font-variant-numeric: tabular-nums; }

@@ -14,7 +14,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import * as api from './api';
-import type { SettingSpec, SettingsResponse } from './api';
+import type { SettingSpec, SettingsResponse, State } from './api';
 import { link } from './router';
 import { fmtBytes, fmtDays, depthCapacity } from './format';
 import { RangeSlider } from './RangeSlider';
@@ -32,8 +32,15 @@ const GROUPS: { id: SettingSpec['group']; title: string; blurb: string }[] = [
     blurb: 'Used to build the download links you copy from a batch page. Anyone with a link can fetch the file.' },
 ];
 
-export function Settings() {
+export function Settings({ state, onPolled, onSignOut }: {
+  /** Null until the first poll lands, exactly as on the batch page. */
+  state: State | null;
+  /** Refetch the dashboard's state after a manual poll. */
+  onPolled: () => Promise<void> | void;
+  onSignOut: () => void;
+}) {
   const [data, setData] = useState<SettingsResponse | null>(null);
+  const [polling, setPolling] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -78,6 +85,10 @@ export function Settings() {
 
       {err && <div className="warn err">{err}</div>}
 
+      <Service state={state} polling={polling}
+        onPoll={async () => { setPolling(true); await api.poll().catch(() => {}); await onPolled(); setPolling(false); }}
+        onSignOut={onSignOut} />
+
       {confirming && (
         <div className="card" style={{ borderColor: 'var(--critical)' }}>
           <h2 style={{ marginBottom: 8 }}>This weakens a guard</h2>
@@ -102,8 +113,12 @@ export function Settings() {
         if (!rows.length) return null;
         return (
           <div className="card" key={g.id}>
-            <h2 style={{ marginBottom: 4 }}>{g.title}</h2>
-            <p className="muted" style={{ fontSize: 12, marginBottom: 12 }}>{g.blurb}</p>
+            {/* Title and blurb ruled off together: they are one thought, and a
+                rule between them reads as a section break that is not there. */}
+            <div className="card-head">
+              <h2>{g.title}</h2>
+              <p className="muted" style={{ fontSize: 12 }}>{g.blurb}</p>
+            </div>
             <div className="settings-grid">
               {rows.map((s) => (
                 <Field key={s.key} s={s} busy={busy === s.key}
@@ -115,19 +130,85 @@ export function Settings() {
       })}
 
       <div className="card">
-        <h2 style={{ marginBottom: 4 }}>Fixed at startup</h2>
         {/* Not a policy choice: these are read before the settings table can be
             opened, or before the request that would edit them is authenticated. */}
-        <p className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
-          Read before this page exists — the node URL and database path are needed to start, and the
-          admin token authenticates this page. Changing them means editing the deployment.
-        </p>
+        <div className="card-head">
+          <h2>Fixed at startup</h2>
+          <p className="muted" style={{ fontSize: 12 }}>
+            Read before this page exists — the node URL and database path are needed to start, and the
+            admin token authenticates this page. Changing them means editing the deployment.
+          </p>
+        </div>
         <div className="tiles">
           <Fixed label="Bee node" value={data.fixed.beeUrl} />
           <Fixed label="Poll interval" value={`${data.fixed.pollIntervalMs / 1000}s`} />
           <Fixed label="Database" value={data.fixed.dbPath} />
           <Fixed label="Max upload" value={fmtBytes(data.fixed.maxUploadBytes)} />
         </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * What the service is doing right now, as opposed to how it is configured.
+ *
+ * These four moved off the dashboard header. Three of them belong here on the
+ * merits: reachability and armed-ness describe the SERVICE rather than the
+ * batches, and both sit next to the settings that determine them — auto top-up
+ * being on is a reading of AUTO_TOPUP_ENABLED and DRY_RUN, which are editable
+ * a few centimetres below. Poll now and Sign out act on the service too.
+ *
+ * The dashboard keeps no chip for the healthy case, and interrupts with a
+ * banner for the unhealthy one. A status you have to navigate to is fine while
+ * everything is fine; it is not fine as the only signal that a node is down.
+ */
+function Service({ state, polling, onPoll, onSignOut }: {
+  state: State | null;
+  polling: boolean;
+  onPoll: () => void;
+  onSignOut: () => void;
+}) {
+  const armed = state ? state.config.autoTopupEnabled && !state.config.dryRun : null;
+  return (
+    <div className="card">
+      <div className="spread">
+        <h2>Service</h2>
+        <div className="row">
+          {/* `is-live` pulses the dot. Only this chip gets it: reachability is
+              the one state here that is a live reading rather than a stored
+              fact, and animating the rest would spend attention on things that
+              are not changing. */}
+          {state && (
+            <span className={`status is-live ${state.ok ? 'good' : 'critical'}`}>
+              {state.ok ? 'node reachable' : 'node unreachable'}
+            </span>
+          )}
+          {armed !== null && (
+            <span className={`status ${armed ? 'good' : 'warning'}`}
+              title="Batches below the TTL threshold are topped up automatically, within the configured spend caps.">
+              auto top-up {armed ? 'on' : 'off'}
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="row">
+        <button onClick={onPoll} disabled={polling}>{polling ? 'Polling…' : 'Poll now'}</button>
+        {/* Not a refresh. tick() evaluates every batch and then acts on the
+            result, so with auto top-up armed this button can spend — the same
+            code path the 5-minute cycle uses. Saying so is the difference
+            between an informed click and a surprise. */}
+        <span className="muted" style={{ fontSize: 12 }}>
+          {armed
+            ? 'Runs a full cycle now rather than waiting. Auto top-up is armed, so this can buy — within the caps below.'
+            : 'Runs a full cycle now rather than waiting. Auto top-up is off, so it will report what it would have done and spend nothing.'}
+        </span>
+      </div>
+      <div className="row" style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--grid)' }}>
+        <button onClick={onSignOut} title="Forget the token stored in this browser">Sign out</button>
+        <span className="muted" style={{ fontSize: 12 }}>
+          Forgets the admin token held in this browser. The service keeps running.
+        </span>
       </div>
     </div>
   );
