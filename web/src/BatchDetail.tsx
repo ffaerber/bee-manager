@@ -138,7 +138,7 @@ export function BatchDetail({ batchId, state, onChange }: {
         )}
 
         {batch && <BatchFacts b={batch} state={state!} onChange={onChange} />}
-        {batch?.managed && <Policy b={batch} onChange={onChange} />}
+        {batch?.managed && <Policy b={batch} state={state!} onChange={onChange} />}
 
         {!data && !err && <div className="card"><p className="muted">Reading 65,536 buckets…</p></div>}
 
@@ -420,23 +420,35 @@ function BatchFacts({ b, state, onChange }: {
  * freeze the batch at whatever the default was the day it was first seen, so
  * changing the service default would stop reaching it.
  */
-function Policy({ b, onChange }: { b: Batch; onChange: () => void | Promise<void> }) {
+function Policy({ b, state, onChange }: {
+  b: Batch; state: State; onChange: () => void | Promise<void>;
+}) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
   const eff = b.effective;
+  const below = Math.round(eff.topupWhenTtlBelowSec / 86_400);
+  const target = Math.round(eff.topupTargetTtlSec / 86_400);
+  /** What one full top-up costs at the current chain price, or null if unknown. */
+  const topupCostBzz = state.chain
+    ? (Number(state.chain.price)
+        * Math.ceil(Math.max(0, target - below) * 86_400 * 1000 / state.msPerBlock)
+        * Math.pow(2, b.depth)) / 1e16
+    : null;
   const fields: {
-    key: keyof typeof b.policy; label: string; hint: string;
+    key: keyof typeof b.policy; label: string; unit: string; hint?: string;
     globalValue: number; step?: string; min?: string; max?: string;
   }[] = [
-    { key: 'topupBelowDays', label: 'Top up when life falls below', hint: 'days',
+    { key: 'topupBelowDays', label: 'Top up when life falls below', unit: 'days',
       globalValue: eff.topupWhenTtlBelowSec / 86_400, min: '1' },
-    { key: 'topupTargetDays', label: 'Top up to', hint: 'days — the size of each top-up',
+    // "to", not "by". The distinction is the whole model and was invisible.
+    { key: 'topupTargetDays', label: 'Top up to', unit: 'days total',
+      hint: 'a ceiling, not an amount added',
       globalValue: eff.topupTargetTtlSec / 86_400, min: '2' },
-    { key: 'diluteAbove', label: 'Dilute when fullest bucket exceeds', hint: '0–1, e.g. 0.9',
+    { key: 'diluteAbove', label: 'Dilute when fullest bucket exceeds', unit: 'of 1.0',
       globalValue: eff.diluteWhenUtilizationAbove, step: '0.05', min: '0.1', max: '1' },
-    { key: 'maxDiluteDepth', label: 'Never auto-dilute past depth', hint: 'depth ceiling',
+    { key: 'maxDiluteDepth', label: 'Never auto-dilute past', unit: 'depth',
       globalValue: eff.maxAutoDiluteDepth, min: '17', max: '41' },
   ];
 
@@ -458,9 +470,20 @@ function Policy({ b, onChange }: { b: Batch; onChange: () => void | Promise<void
         <h2>Policy for this batch</h2>
         {saved && <span className="status good">saved</span>}
       </div>
-      <p className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
-        Leave a field empty to follow the service default, shown greyed. A value here overrides it
-        for this batch only.
+      <p className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
+        Leave a field empty to follow the service default, shown under each field. A value here
+        overrides it for this batch only.
+      </p>
+
+      {/* The target model is not obvious from a number in a box: "60" could be
+          days added or days aimed for. Stating it with this batch's own figures
+          answers that without a paragraph of theory. */}
+      <p className="secondary" style={{ fontSize: 13, marginBottom: 12 }}>
+        As set: when this batch drops below <strong>{below} days</strong> of life it is topped up to{' '}
+        <strong>{target} days total</strong> — buying about <strong>{Math.max(0, target - below)} days</strong>
+        {topupCostBzz !== null && <> for roughly <strong>{topupCostBzz.toFixed(3)} xBZZ</strong> at today's price</>}.
+        It is a ceiling, not an amount added, so life is kept between {below} and {target} days
+        rather than growing each time.
       </p>
 
       <div className="tiles">
@@ -480,8 +503,13 @@ function Policy({ b, onChange }: { b: Batch; onChange: () => void | Promise<void
               onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
               style={{ width: '100%', padding: '4px 6px', fontSize: 14 }}
             />
+            {/* The unit used to appear only when the field was overridden, so
+                the normal case read "default 2" with no indication of what 2
+                counted. Unit first, always. */}
             <div className="tile-sub">
-              {b.policy[f.key] === null ? `default ${f.globalValue}` : `overridden · ${f.hint}`}
+              {f.unit}
+              {b.policy[f.key] === null ? ` · default ${f.globalValue}` : ' · overridden'}
+              {f.hint ? ` · ${f.hint}` : ''}
             </div>
           </div>
         ))}
