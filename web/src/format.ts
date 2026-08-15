@@ -24,6 +24,27 @@ export function fmtDays(d: number): string {
   return `${d.toFixed(d < 10 ? 1 : 0)} d`;
 }
 
+/**
+ * Split a duration into whole days and a hh:mm:ss clock.
+ *
+ * Two fields rather than one string because they are typeset differently: the
+ * day count is the reading you take at a glance, the clock is the part that
+ * moves. Callers that want them the same size can just join them.
+ *
+ * Truncates rather than rounds, so the clock counts down through 00:00:00 to
+ * the next day instead of displaying a day that has not fully elapsed — a
+ * countdown that reads "3 d" when 2 d 23 h remain is wrong in the direction
+ * that matters, since this number exists to warn.
+ */
+export function countdown(ms: number): { days: number; clock: string; done: boolean } {
+  if (!isFinite(ms)) return { days: Infinity, clock: '', done: false };
+  const left = Math.max(0, Math.floor(ms / 1000));
+  const days = Math.floor(left / 86_400);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const clock = `${pad(Math.floor((left % 86_400) / 3600))}:${pad(Math.floor((left % 3600) / 60))}:${pad(left % 60)}`;
+  return { days, clock, done: left === 0 };
+}
+
 /** Decimal units (kB = 1000), matching how storage is normally quoted. */
 export function fmtBytes(n: number): string {
   if (n === 0) return '0 B';

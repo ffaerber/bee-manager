@@ -5,7 +5,7 @@ import { BatchDetail } from './BatchDetail';
 import { batchIdFrom, isSettings, link, navigate, usePath } from './router';
 import { Settings } from './Settings';
 import { Wallet } from './Wallet';
-import { fmtDays, ttlSeverity } from './format';
+import { countdown, fmtDays, ttlSeverity } from './format';
 import { Modal } from './Modal';
 import type { Batch, Ladder, Quote, State, Action } from './api';
 
@@ -136,10 +136,7 @@ function Overview({ state }: { state: State }) {
       <div className="spread" style={{ alignItems: 'flex-end', marginBottom: 16 }}>
         <div>
           <div className="hero-label">Runway at the current burn rate</div>
-          <div className={`hero-value ${sev}`}>
-            {isFinite(runway) ? Math.round(runway).toLocaleString() : '∞'}
-            <span className="hero-unit">days</span>
-          </div>
+          <Runway days={runway} sev={sev} />
           <div className={`status ${sev}`} style={{ marginTop: 14 }}>
             {sev === 'good' ? 'comfortable' : sev === 'warning' ? 'under three months' : 'under a month'}
           </div>
@@ -160,6 +157,47 @@ function Overview({ state }: { state: State }) {
           sub="measured, not assumed" />
       </div>
       {state.fiat && <PriceNote fiat={state.fiat} />}
+    </div>
+  );
+}
+
+/**
+ * The runway, counting down live.
+ *
+ * The server computes it at poll time; between polls it keeps running down in
+ * the real world. So the clock is anchored to the moment the figure arrived
+ * and elapsed time is subtracted from it — that is what makes it a true
+ * reading rather than a decorative ticker, and it re-anchors on every poll so
+ * it cannot drift away from the server's own arithmetic.
+ *
+ * Its own component so the 1 Hz tick re-renders eleven characters rather than
+ * the whole card and its four tiles.
+ *
+ * Worth being clear about what the seconds mean: the runway is wallet ÷ burn
+ * rate, an estimate that moves whenever a batch is topped up or the chain
+ * price changes. The seconds are exact about elapsed time, not about the
+ * prediction — this is a rate of consumption made visible, not a deadline.
+ */
+function Runway({ days, sev }: { days: number; sev: string }) {
+  const anchor = useMemo(() => ({ at: Date.now(), days }), [days]);
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => tick((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  // No burn means nothing is being consumed, so there is no clock to run.
+  if (!isFinite(anchor.days)) {
+    return <div className={`hero-value ${sev}`}>∞<span className="hero-unit">days</span></div>;
+  }
+
+  const { days: d, clock, done } = countdown(anchor.days * 86_400_000 - (Date.now() - anchor.at));
+  return (
+    <div className={`hero-value ${sev}`}
+      title="Wallet divided by the current burn rate, counting down from the last poll. An estimate: it moves whenever a batch is topped up or the chain price changes.">
+      {done ? '0' : d.toLocaleString()}
+      <span className="hero-unit">d</span>
+      <span className="hero-clock">{clock}</span>
     </div>
   );
 }

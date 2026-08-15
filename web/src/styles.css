@@ -183,6 +183,17 @@ h2 { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
 .hero-value.critical { text-shadow: 0 0 44px rgba(236, 48, 19, 0.42); }
 .hero-unit { font-size: 18px; color: var(--text-secondary); font-weight: 400; margin-left: 10px; letter-spacing: 0; }
 
+/* The ticking half of the hero. Smaller than the day count because the day
+   count is the reading you take at a glance and this is the part that moves —
+   but still large enough to be part of the headline rather than a footnote.
+   Tabular is not optional here: at 1 Hz, proportional digits would make the
+   whole line jitter every second. */
+.hero-clock {
+  font-size: 34px; font-weight: 600; letter-spacing: -0.01em;
+  color: var(--text-secondary); margin-left: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Stat tiles, divided by hairlines rather than gaps. Fixed column counts (not
    auto-fit) so the row-start rules below can tell which tiles begin a row and
    drop the divider there — an auto-fit grid gives no way to know. */
