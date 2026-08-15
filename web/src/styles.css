@@ -128,8 +128,9 @@ h2 { font-size: 14px; color: var(--text-secondary); letter-spacing: 0.02em; }
    drawing anything per-star. Black regardless of theme — it is a night sky,
    not a surface. */
 .ambient.is-stars {
+  /* No blur and no upscaling: the canvas is already the viewport's size and
+     each star is a real pixel. Blurring 5.6px cells is what made them blobs. */
   image-rendering: auto;
-  filter: blur(1.1px) saturate(0.6);
   background: #000;
 }
 
