@@ -179,10 +179,15 @@ export function createServer(deps: ServerDeps) {
           const stored = db.settings();
           const eff = applySettings(cfg, stored);
           return json({
-            settings: EDITABLE.map((spec) => ({
-              ...spec,
-              value: envValue(eff, spec.key),
-            })),
+            settings: EDITABLE.map((spec) => {
+              const v = envValue(eff, spec.key);
+              return {
+                ...spec,
+                // Served in display units, so the page never has to know which
+                // settings are secretly fractions.
+                value: spec.kind === 'percent' && typeof v === 'number' ? v * 100 : v,
+              };
+            }),
             /**
              * Bootstrap only. These are read before the settings table exists
              * or before the request is authenticated, so they cannot live in
@@ -211,10 +216,14 @@ export function createServer(deps: ServerDeps) {
             if (spec.kind === 'bool') { applied[key] = Boolean(raw); continue; }
             if (spec.kind === 'string') { applied[key] = String(raw ?? ''); continue; }
 
-            const n = Number(raw);
+            // Percent settings arrive as 0-100 and are stored as a fraction,
+            // which is what utilizationRatio is and what evaluate() compares
+            // against. The conversion lives here so exactly one layer knows.
+            const n = spec.kind === 'percent' ? Number(raw) / 100 : Number(raw);
             if (!Number.isFinite(n)) { set.status = 400; return { error: `${key} must be a number` }; }
-            if (spec.min !== undefined && n < spec.min) { set.status = 400; return { error: `${key} must be at least ${spec.min}` }; }
-            if (spec.max !== undefined && n > spec.max) { set.status = 400; return { error: `${key} must be at most ${spec.max}` }; }
+            const shown = spec.kind === 'percent' ? n * 100 : n;
+            if (spec.min !== undefined && shown < spec.min) { set.status = 400; return { error: `${key} must be at least ${spec.min}` }; }
+            if (spec.max !== undefined && shown > spec.max) { set.status = 400; return { error: `${key} must be at most ${spec.max}` }; }
 
             // Loosening a guard is allowed, but never by accident. Tightening
             // needs no ceremony — the cautious direction should be frictionless.

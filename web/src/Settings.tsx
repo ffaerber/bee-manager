@@ -150,6 +150,22 @@ function Field({ s, busy, onSave }: {
     );
   }
 
+  if (s.kind === 'percent') {
+    // Bounded value, so a slider — the range is the useful context, same as
+    // the wizard's depth and duration. Commits on release: dragging fires
+    // continuously and every one of those would be a PATCH and a ledger entry.
+    return (
+      <div>
+        <div className="tile-label">{s.label}</div>
+        <PercentSlider
+          value={Number(s.value ?? 0)} min={s.min ?? 0} max={s.max ?? 100}
+          disabled={busy} onCommit={onSave}
+        />
+        {s.hint && <div className="tile-sub">{s.hint}</div>}
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="tile-label">{s.label}</div>
@@ -157,7 +173,8 @@ function Field({ s, busy, onSave }: {
         type={s.kind === 'string' ? 'text' : 'number'}
         defaultValue={s.value === null ? '' : String(s.value)}
         disabled={busy}
-        min={s.min} max={s.max} step={s.kind === 'float' ? '0.05' : undefined}
+        min={s.min} max={s.max}
+        step={s.kind === 'float' ? '0.05' : undefined}
         style={{ width: '100%', padding: '5px 8px', fontSize: 14, marginTop: 2 }}
         onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
         onBlur={(e) => {
@@ -168,6 +185,34 @@ function Field({ s, busy, onSave }: {
         }}
       />
       {s.hint && <div className="tile-sub">{s.hint}</div>}
+    </div>
+  );
+}
+
+function PercentSlider({ value, min, max, disabled, onCommit }: {
+  value: number; min: number; max: number; disabled: boolean; onCommit: (v: number) => void;
+}) {
+  const [shown, setShown] = useState(value);
+  const [dragging, setDragging] = useState(false);
+  useEffect(() => { if (!dragging) setShown(value); }, [value, dragging]);
+  const commit = () => { setDragging(false); if (shown !== value) onCommit(shown); };
+
+  return (
+    <div>
+      <div className="row" style={{ gap: 10, flexWrap: 'nowrap', alignItems: 'center' }}>
+        <input
+          type="range" min={min} max={max} step={5} value={shown} disabled={disabled}
+          onChange={(e) => { setDragging(true); setShown(Number(e.target.value)); }}
+          onMouseUp={commit} onTouchEnd={commit} onKeyUp={commit}
+          style={{ flex: 1 }}
+        />
+        <span className="mono" style={{ minWidth: 44, textAlign: 'right', fontWeight: 600 }}>
+          {shown}%
+        </span>
+      </div>
+      <div className="row spread muted" style={{ fontSize: 11 }}>
+        <span>{min}%</span><span>{max}%</span>
+      </div>
     </div>
   );
 }

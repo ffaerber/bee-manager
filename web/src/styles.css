@@ -320,3 +320,10 @@ button.danger {
   background: var(--critical); border-color: var(--critical); color: #fff; font-weight: 600;
 }
 button.danger:hover:not(:disabled) { filter: brightness(1.08); }
+
+/* A button that reads as a link — used inline inside descriptive text where a
+   real button would break the sentence. */
+.linkish {
+  background: none; border: none; padding: 0; font: inherit; cursor: pointer;
+  color: var(--series-1); text-decoration: underline;
+}

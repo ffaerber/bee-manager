@@ -127,3 +127,38 @@ describe('loosening needs confirmation, tightening does not', () => {
     }
   });
 });
+
+/**
+ * Percent settings are stored as a fraction and shown as 0-100.
+ *
+ * utilizationRatio is a fraction, and evaluate() compares against it directly,
+ * so the stored form has to stay a fraction. "0.9 of 1.0" is simply not how
+ * anyone reads a threshold, so the conversion lives at the API boundary and
+ * the dashboard never sees a fraction.
+ */
+describe('percent settings', () => {
+  const spec = EDITABLE.find((s) => s.key === 'diluteWhenUtilizationAbove')!;
+
+  it('is declared in display units', () => {
+    expect(spec.kind).toBe('percent');
+    expect(spec.min).toBe(10);
+    expect(spec.max).toBe(100);
+  });
+
+  it('round-trips a fraction through the display form', () => {
+    for (const pct of [10, 55, 75, 90, 100]) {
+      const stored = pct / 100;
+      expect(applySettings(cfg, { diluteWhenUtilizationAbove: String(stored) })
+        .diluteWhenUtilizationAbove).toBeCloseTo(stored, 6);
+      expect(Math.round(stored * 100)).toBe(pct);
+    }
+  });
+
+  it('keeps the stored value comparable with utilizationRatio', () => {
+    // The whole reason storage stays fractional: this is compared directly
+    // against a bucket's fill ratio, which is 0-1.
+    const out = applySettings(cfg, { diluteWhenUtilizationAbove: '0.75' });
+    expect(out.diluteWhenUtilizationAbove).toBeLessThanOrEqual(1);
+    expect(out.diluteWhenUtilizationAbove).toBe(0.75);
+  });
+});

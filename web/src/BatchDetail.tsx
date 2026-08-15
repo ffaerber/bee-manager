@@ -438,6 +438,8 @@ function Policy({ b, state, onChange }: {
     : null;
   const fields: {
     key: keyof typeof b.policy; label: string; unit: string; hint?: string;
+    /** Stored as a fraction, entered and displayed as 0-100. */
+    percent?: boolean;
     globalValue: number; step?: string; min?: string; max?: string;
   }[] = [
     { key: 'topupBelowDays', label: 'Top up when life falls below', unit: 'days',
@@ -446,15 +448,20 @@ function Policy({ b, state, onChange }: {
     { key: 'topupTargetDays', label: 'Top up to', unit: 'days total',
       hint: 'a ceiling, not an amount added',
       globalValue: eff.topupTargetTtlSec / 86_400, min: '2' },
-    { key: 'diluteAbove', label: 'Dilute when fullest bucket exceeds', unit: 'of 1.0',
-      globalValue: eff.diluteWhenUtilizationAbove, step: '0.05', min: '0.1', max: '1' },
+    // Stored as a fraction, shown as a percentage. "0.9 of 1.0" is the same
+    // number nobody reads as ninety percent without converting it first.
+    { key: 'diluteAbove', label: 'Dilute when fullest bucket exceeds', unit: '%',
+      percent: true,
+      globalValue: Math.round(eff.diluteWhenUtilizationAbove * 100), step: '1', min: '10', max: '100' },
     { key: 'maxDiluteDepth', label: 'Never auto-dilute past', unit: 'depth',
       globalValue: eff.maxAutoDiluteDepth, min: '17', max: '41' },
   ];
 
-  async function save(key: keyof typeof b.policy, raw: string) {
-    const value = raw.trim() === '' ? null : Number(raw);
+  async function save(key: keyof typeof b.policy, raw: string, percent = false) {
+    let value = raw.trim() === '' ? null : Number(raw);
     if (value !== null && !Number.isFinite(value)) return;
+    // Percent fields are entered as 0-100 and stored as a fraction.
+    if (value !== null && percent) value = value / 100;
     setBusy(true); setErr(null); setSaved(false);
     try {
       await api.patchBatch(b.batchID, { [key]: value } as any);
@@ -490,19 +497,34 @@ function Policy({ b, state, onChange }: {
         {fields.map((f) => (
           <div key={f.key}>
             <div className="tile-label">{f.label}</div>
-            <input
-              type="number" disabled={busy}
-              defaultValue={b.policy[f.key] ?? ''}
-              placeholder={String(f.globalValue)}
-              step={f.step} min={f.min} max={f.max}
-              onBlur={(e) => {
-                const cur = b.policy[f.key];
-                const next = e.target.value.trim() === '' ? null : Number(e.target.value);
-                if (next !== cur) save(f.key, e.target.value);
-              }}
-              onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-              style={{ width: '100%', padding: '4px 6px', fontSize: 14 }}
-            />
+            {f.percent ? (
+              /* A slider, because the value is bounded and the range is the
+                 useful context — the same reason the wizard uses one for depth
+                 and duration. A slider cannot express "empty means inherit",
+                 so it shows what is in force and Reset clears the override. */
+              <PercentSlider
+                value={f.percent && b.policy[f.key] !== null && b.policy[f.key] !== undefined
+                  ? Math.round((b.policy[f.key] as number) * 100)
+                  : f.globalValue}
+                min={Number(f.min ?? 10)} max={Number(f.max ?? 100)}
+                disabled={busy}
+                onCommit={(v) => save(f.key, String(v), true)}
+              />
+            ) : (
+              <input
+                type="number" disabled={busy}
+                defaultValue={b.policy[f.key] ?? ''}
+                placeholder={String(f.globalValue)}
+                step={f.step} min={f.min} max={f.max}
+                onBlur={(e) => {
+                  const raw = e.target.value.trim();
+                  const next = raw === '' ? null : Number(raw);
+                  if (next !== b.policy[f.key]) save(f.key, raw);
+                }}
+                onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                style={{ width: '100%', padding: '4px 6px', fontSize: 14 }}
+              />
+            )}
             {/* The unit used to appear only when the field was overridden, so
                 the normal case read "default 2" with no indication of what 2
                 counted. Unit first, always. */}
@@ -510,6 +532,10 @@ function Policy({ b, state, onChange }: {
               {f.unit}
               {b.policy[f.key] === null ? ` · default ${f.globalValue}` : ' · overridden'}
               {f.hint ? ` · ${f.hint}` : ''}
+              {b.policy[f.key] !== null && (
+                <> · <button className="linkish" disabled={busy}
+                  onClick={() => save(f.key, '')}>reset</button></>
+              )}
             </div>
           </div>
         ))}
@@ -738,6 +764,43 @@ function Topup({ b, onDone }: { b: Batch; onDone: () => Promise<void> }) {
       )}
       {done && <div className="warn" style={{ borderLeftColor: 'var(--good)', background: 'transparent' }}>{done}</div>}
       {err && <div className="warn err">{err}</div>}
+    </div>
+  );
+}
+
+/**
+ * A bounded percentage, as a slider.
+ *
+ * Commits on release rather than on every input event: dragging fires
+ * continuously, and each one is a PATCH and a ledger entry.
+ */
+function PercentSlider({ value, min, max, disabled, onCommit }: {
+  value: number; min: number; max: number; disabled: boolean;
+  onCommit: (v: number) => void;
+}) {
+  const [shown, setShown] = useState(value);
+  // Follow the server once a save lands, but never while dragging.
+  const [dragging, setDragging] = useState(false);
+  useEffect(() => { if (!dragging) setShown(value); }, [value, dragging]);
+
+  return (
+    <div>
+      <div className="row" style={{ gap: 10, flexWrap: 'nowrap', alignItems: 'center' }}>
+        <input
+          type="range" min={min} max={max} step={5} value={shown} disabled={disabled}
+          onChange={(e) => { setDragging(true); setShown(Number(e.target.value)); }}
+          onMouseUp={() => { setDragging(false); if (shown !== value) onCommit(shown); }}
+          onTouchEnd={() => { setDragging(false); if (shown !== value) onCommit(shown); }}
+          onKeyUp={() => { setDragging(false); if (shown !== value) onCommit(shown); }}
+          style={{ flex: 1 }}
+        />
+        <span className="mono" style={{ minWidth: 44, textAlign: 'right', fontWeight: 600 }}>
+          {shown}%
+        </span>
+      </div>
+      <div className="row spread muted" style={{ fontSize: 11 }}>
+        <span>{min}%</span><span>{max}%</span>
+      </div>
     </div>
   );
 }

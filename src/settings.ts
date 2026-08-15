@@ -35,7 +35,12 @@ type Guard = 'higher' | 'lower' | null;
 interface Spec {
   /** Key in the settings table. */
   key: string;
-  kind: 'bool' | 'int' | 'float' | 'bzz' | 'string';
+  /**
+   * `percent` is stored as a fraction (0–1, which is what utilizationRatio
+   * actually is) but shown and entered as 0–100. Nobody reads "0.9 of 1.0" as
+   * ninety percent without translating it first.
+   */
+  kind: 'bool' | 'int' | 'float' | 'percent' | 'bzz' | 'string';
   /** Direction that weakens this guard, or null when it guards nothing. */
   looserWhen: Guard;
   /** Human label for the dashboard. */
@@ -66,8 +71,8 @@ export const EDITABLE: Spec[] = [
     min: 1, max: 3650, label: 'Top up when life falls below', hint: 'days' },
   { group: 'thresholds', key: 'topupTargetTtlDays', kind: 'int', looserWhen: null,
     min: 2, max: 3650, label: 'Top up to', hint: 'days — the size of each top-up' },
-  { group: 'thresholds', key: 'diluteWhenUtilizationAbove', kind: 'float', looserWhen: null,
-    min: 0.1, max: 1, label: 'Dilute when fullest bucket exceeds', hint: '0–1' },
+  { group: 'thresholds', key: 'diluteWhenUtilizationAbove', kind: 'percent', looserWhen: null,
+    min: 10, max: 100, label: 'Dilute when fullest bucket exceeds', hint: 'percent full' },
 
   { group: 'limits', key: 'maxTopupBzzPerBatch', kind: 'bzz', looserWhen: 'higher',
     label: 'Max per action', hint: 'xBZZ',
