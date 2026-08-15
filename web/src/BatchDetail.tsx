@@ -15,9 +15,9 @@ import * as api from './api';
 import type { Batch, BucketGrid, DilutePreview, State, TopupPreview, Upload } from './api';
 import { decodeGrid } from './mapColors';
 import { MapCanvas, type Hover } from './MapCanvas';
-import { RangeSlider, depthCapacity } from './RangeSlider';
+import { RangeSlider } from './RangeSlider';
 import { link } from './router';
-import { expiryDate, fmtBytes, fmtDays, ttlSeverity } from './format';
+import { expiryDate, fmtBytes, fmtDays, ttlSeverity, depthCapacity } from './format';
 
 /** Buckets are re-read on this cadence so a screen left open stays current. */
 const REFRESH_MS = 60_000;

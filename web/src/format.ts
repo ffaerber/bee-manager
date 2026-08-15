@@ -40,3 +40,15 @@ export function expiryDate(ttlDays: number, now = Date.now()): string {
     year: 'numeric', month: 'short', day: 'numeric',
   });
 }
+
+/**
+ * Capacity at a given depth, for labelling a depth control.
+ *
+ * Lives here rather than beside the slider because it is a pure function, and a
+ * .tsx module cannot be imported by the server-side test project — the root
+ * tsconfig has no `jsx` setting, and adding one to typecheck a helper would be
+ * configuring around the wrong thing.
+ */
+export function depthCapacity(depth: number): string {
+  return fmtBytes(Math.pow(2, depth) * 4096);
+}

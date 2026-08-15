@@ -16,8 +16,8 @@ import { useCallback, useEffect, useState } from 'react';
 import * as api from './api';
 import type { SettingSpec, SettingsResponse } from './api';
 import { link } from './router';
-import { fmtBytes } from './format';
-import { RangeSlider, depthCapacity } from './RangeSlider';
+import { fmtBytes, depthCapacity } from './format';
+import { RangeSlider } from './RangeSlider';
 
 const GROUPS: { id: SettingSpec['group']; title: string; blurb: string }[] = [
   { id: 'automation', title: 'Automation',

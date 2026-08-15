@@ -59,12 +59,3 @@ export function RangeSlider({
     </div>
   );
 }
-
-/** Capacity at a given depth, for labelling a depth slider. */
-export function depthCapacity(depth: number): string {
-  const bytes = Math.pow(2, depth) * 4096;
-  const u = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
-  const i = Math.min(Math.floor(Math.log10(bytes) / 3), u.length - 1);
-  const v = bytes / Math.pow(1000, i);
-  return `${v < 10 ? v.toFixed(1) : Math.round(v)} ${u[i]}`;
-}

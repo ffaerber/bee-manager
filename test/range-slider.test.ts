@@ -6,7 +6,7 @@
  * point — it makes the far end visibly absurd rather than merely large.
  */
 import { describe, expect, it } from 'bun:test';
-import { depthCapacity } from '../web/src/RangeSlider';
+import { depthCapacity } from '../web/src/format';
 import { capacityBytes } from '../src/math';
 
 describe('depthCapacity', () => {
@@ -17,8 +17,9 @@ describe('depthCapacity', () => {
       const shown = depthCapacity(d);
       const n = parseFloat(shown);
       const unit = shown.split(' ')[1]!;
-      const mult = { B: 1, KB: 1e3, MB: 1e6, GB: 1e9, TB: 1e12, PB: 1e15 }[unit]!;
-      expect(Math.abs(n * mult - server) / server).toBeLessThan(0.05);
+      const mult: Record<string, number> = { B: 1, KB: 1e3, MB: 1e6, GB: 1e9, TB: 1e12, PB: 1e15 };
+      const m = mult[unit]!;
+      expect(Math.abs(n * m - server) / server).toBeLessThan(0.05);
     }
   });
 
@@ -31,8 +32,11 @@ describe('depthCapacity', () => {
   });
 
   it('labels the extremes readably', () => {
+    // Formatted by the same fmtBytes the rest of the dashboard uses, so a
+    // depth label and a stored-size figure never disagree about how to write
+    // a number.
     expect(depthCapacity(17)).toBe('537 MB');
-    expect(depthCapacity(41)).toBe('9.0 PB');
+    expect(depthCapacity(41)).toBe('9.01 PB');
   });
 
   it('stays a short label at every allowed depth', () => {
