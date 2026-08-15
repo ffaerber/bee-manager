@@ -3,6 +3,12 @@
    on it, so there is no light variant to switch to — a white background would
    make the star field meaningless.
 
+   The system is deliberately hard-edged. Nothing is rounded, seams are
+   hairlines rather than gaps, labels are small uppercase and widely tracked,
+   and figures are large and tight. On a black page a rounded, softly-bordered
+   card reads as a floating pill; a sharp one reads as an instrument panel,
+   which is what this is.
+
    Colours validated against the surface (#05060c) with
    scripts/validate_palette.js:
 
@@ -43,15 +49,25 @@
   --plane: #05060c;
   /* Translucent over the star field, so the map shows faintly through every
      card rather than being hidden by them. */
-  --surface-1: rgba(8, 9, 22, 0.78);
+  --surface-1: rgba(8, 9, 22, 0.72);
   --surface-solid: #0a0b16;
+
+  /* Two distant light sources, warm-violet above right and cold-blue below
+     left. They give the page depth that a flat black cannot, and they are what
+     the star field is drawn INTO rather than on top of. */
+  --nebula-a: #16143a;
+  --nebula-b: #0d2338;
 
   --text-primary: #e8e7ee;
   --text-secondary: rgba(232, 231, 238, 0.62);
   --text-muted: rgba(232, 231, 238, 0.45);
+  /* Micro-labels sit between secondary and muted: legible as a heading, never
+     competing with the figure underneath. */
+  --text-label: rgba(232, 231, 238, 0.5);
 
   --border: rgba(232, 231, 238, 0.18);
   --grid: rgba(232, 231, 238, 0.14);
+  --rule: rgba(232, 231, 238, 0.22);
   --baseline: rgba(232, 231, 238, 0.3);
 
   --series-1: #ff6a4d;
@@ -76,46 +92,114 @@
 * { box-sizing: border-box; }
 body {
   margin: 0;
-  background: var(--plane);
+  min-height: 100vh;
+  /* Fixed, so the nebulae belong to the window rather than scrolling away with
+     the content — they are the room the page sits in, not part of it. */
+  background:
+    radial-gradient(1200px 800px at 78% -10%, var(--nebula-a) 0%, rgba(8, 9, 20, 0) 60%),
+    radial-gradient(900px 700px at 8% 110%, var(--nebula-b) 0%, rgba(8, 9, 20, 0) 55%),
+    var(--plane);
+  background-attachment: fixed;
   color: var(--text-primary);
-  font: 14px/1.5 Archivo, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font: 15px/1.5 Archivo, system-ui, -apple-system, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 a { color: var(--series-1); text-decoration: none; }
 a:hover { color: var(--critical); }
 ::selection { background: rgba(236, 48, 19, 0.35); }
-h1, h2 { font-weight: 600; margin: 0; }
-h1 { font-size: 18px; }
-h2 { font-size: 14px; color: var(--text-secondary); letter-spacing: 0.02em; }
 
-.wrap { max-width: 1100px; margin: 0 auto; padding: 24px 20px 64px; }
+/* The live dot's pulse. Slow and shallow — a heartbeat, not a blink. */
+@keyframes twinkle { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
+
+h1, h2 { margin: 0; }
+h1 {
+  font-size: 30px; font-weight: 800; letter-spacing: -0.02em;
+  display: flex; align-items: center; gap: 16px;
+}
+/* A lit marker rather than a logo: it states that the page is live, and it is
+   the one place the accent colour appears at full strength.
+
+   Only on the app title. The batch page and settings put their own subject in
+   an h1, and a red square in this palette means "critical" — beside a batch
+   name it would read as that batch's state rather than as a mark. */
+h1.brand::before {
+  content: ''; flex: none; width: 10px; height: 10px;
+  background: var(--critical);
+  box-shadow: 0 0 18px 4px rgba(236, 48, 19, 0.8);
+}
+h2 { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
+
+.wrap { max-width: 1680px; margin: 0 auto; padding: 32px 40px 72px; }
 .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .spread { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
 .card {
   /* Translucent and blurred, so the star field reads faintly behind every
-     panel instead of being covered by it. */
+     panel instead of being covered by it. Square, because the panel is an
+     instrument face. */
   background: var(--surface-1);
   backdrop-filter: blur(8px);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 16px;
-  margin-bottom: 16px;
+  padding: 26px 30px;
+  margin-bottom: 24px;
+}
+/* A card's own title gets a rule under it, so the heading reads as a band
+   across the panel rather than as the first line of its contents. */
+.card > h2:first-child,
+.card > .spread:first-child {
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--grid);
+  margin-bottom: 20px;
 }
 .muted { color: var(--text-muted); }
 .secondary { color: var(--text-secondary); }
 .mono { font-variant-numeric: tabular-nums; }
 
-/* Hero — exactly one per view. Proportional figures, not tabular. */
-.hero-label { color: var(--text-secondary); font-size: 13px; }
-.hero-value { font-size: 52px; font-weight: 600; line-height: 1.05; }
-.hero-unit { font-size: 20px; color: var(--text-secondary); font-weight: 400; margin-left: 6px; }
+/* ── micro-labels ────────────────────────────────────────────────────────
+   Small, uppercase, widely tracked. The tracking is what makes 11px legible
+   as a heading instead of just small text, and it puts a clear rank between
+   the label and the figure it names without needing a second colour. */
+.hero-label, .tile-label, .map-legend, label.field, th {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-label);
+}
+.hero-label { letter-spacing: 0.18em; }
 
-.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
-.tile-label { color: var(--text-secondary); font-size: 12px; margin-bottom: 4px; }
-.tile-value { font-size: 24px; font-weight: 600; }
+/* Hero — exactly one per view. Tabular so the figure does not jitter as it
+   polls, and lit from behind so the single most important number on the page
+   is unmistakably that. */
+.hero-value {
+  font-size: 76px; font-weight: 800; line-height: 0.9;
+  letter-spacing: -0.04em; font-variant-numeric: tabular-nums;
+  margin-top: 10px;
+  text-shadow: 0 0 40px rgba(232, 231, 238, 0.22);
+}
+/* The glow takes the runway's own severity, so the headline number is lit the
+   colour of the state it reports. Never colour-alone: the pill underneath
+   names the same state in words. */
+.hero-value.good { text-shadow: 0 0 40px rgba(127, 227, 196, 0.30); }
+.hero-value.warning { text-shadow: 0 0 40px rgba(250, 178, 25, 0.35); }
+.hero-value.critical { text-shadow: 0 0 44px rgba(236, 48, 19, 0.42); }
+.hero-unit { font-size: 18px; color: var(--text-secondary); font-weight: 400; margin-left: 10px; letter-spacing: 0; }
+
+/* Stat tiles, divided by hairlines rather than gaps. Fixed column counts (not
+   auto-fit) so the row-start rules below can tell which tiles begin a row and
+   drop the divider there — an auto-fit grid gives no way to know. */
+.tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 22px 0; }
+.tiles > * { border-left: 1px solid var(--grid); padding-left: 24px; }
+.tiles > :nth-child(2n + 1) { border-left: 0; padding-left: 0; }
+@media (min-width: 960px) {
+  .tiles { grid-template-columns: repeat(4, 1fr); }
+  .tiles > :nth-child(2n + 1) { border-left: 1px solid var(--grid); padding-left: 24px; }
+  .tiles > :nth-child(4n + 1) { border-left: 0; padding-left: 0; }
+}
+.tile-label { margin-bottom: 8px; }
+.tile-value { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 /* Inline with the value, but recessive — the number is the fact, the ticker
    only qualifies it. Mirrors .hero-unit at tile scale. */
-.tile-unit { font-size: 13px; font-weight: 400; color: var(--text-secondary); margin-left: 5px; }
+.tile-unit { font-size: 14px; font-weight: 500; color: var(--text-secondary); margin-left: 6px; letter-spacing: 0; }
+.tile-sub { color: var(--text-muted); font-size: 12px; margin-top: 5px; }
 
 /* ── ambient background map ─────────────────────────────────────────────
    Behind everything, and inert: it must never swallow a click meant for the
@@ -132,20 +216,15 @@ h2 { font-size: 14px; color: var(--text-secondary); letter-spacing: 0.02em; }
 /* The instrument: one crisp cell per bucket, nothing interpolated away. */
 .ambient.is-pixels { image-rendering: pixelated; }
 
-/* The wallpaper. Smooth upscaling plus a blur turns one pixel per bucket into
-   a star field, and the bloom makes brighter points read as larger without
-   drawing anything per-star. Black regardless of theme — it is a night sky,
-   not a surface. */
-.ambient.is-stars {
-  /* No blur and no upscaling: the canvas is already the viewport's size and
-     each star is a real pixel. Blurring 5.6px cells is what made them blobs. */
-  image-rendering: auto;
-  background: #000;
-}
+/* The wallpaper. The canvas is the viewport's own size and each star is a real
+   pixel, so nothing is upscaled or blurred — blurring 5.6px cells is what made
+   them blobs. It is drawn transparent, letting the page's nebulae show through
+   so the field has depth instead of sitting on flat black. */
+.ambient.is-stars { image-rendering: auto; }
 
-/* The panel rides above the map. Cards keep their opaque surface so text
-   contrast is unaffected by whatever is painted behind them — the map shows
-   through the gaps, and hiding the panel reveals it whole. */
+/* The panel rides above the map. Cards keep their surface so text contrast is
+   unaffected by whatever is painted behind them — the map shows through the
+   gaps, and hiding the panel reveals it whole. */
 body:has(.ambient) .wrap { position: relative; z-index: 1; }
 
 .wrap.ui-hidden {
@@ -160,15 +239,24 @@ body:has(.ambient) .wrap { position: relative; z-index: 1; }
    everything needed to read the map. */
 .map-bar {
   position: fixed; left: 16px; right: 16px; bottom: 16px; z-index: 10;
-  display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
+  display: flex; gap: 18px; align-items: center; flex-wrap: wrap;
   background: var(--surface-1); border: 1px solid var(--border);
-  border-radius: 10px; padding: 10px 14px;
-  box-shadow: 0 2px 12px rgb(0 0 0 / 0.22);
+  backdrop-filter: blur(8px);
+  padding: 12px 16px;
   font-size: 12px;
 }
-.map-bar .label { color: var(--text-primary); font-weight: 600; white-space: nowrap; }
-.map-bar button { padding: 5px 12px; font-size: 12px; margin-left: auto; }
-.map-legend { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+.map-bar .label {
+  color: var(--text-primary); font-weight: 700; white-space: nowrap;
+  font-size: 14px; letter-spacing: -0.01em;
+}
+.map-bar button { padding: 6px 14px; font-size: 12px; margin-left: auto; }
+.map-legend {
+  display: flex; gap: 8px 18px; flex-wrap: wrap; align-items: center;
+  color: var(--text-secondary);
+  /* The legend is a row of named swatches, not a heading — it opts out of the
+     uppercase micro-label treatment it would otherwise inherit. */
+  font-size: 12px; letter-spacing: 0; text-transform: none;
+}
 /* Recedes until hovered so it does not compete with the view it explains, but
    never disappears — a control you cannot find is a trap. */
 .map-bar { opacity: 0.75; transition: opacity 160ms ease-out; }
@@ -181,21 +269,20 @@ body:has(.ambient) .wrap { position: relative; z-index: 1; }
 .modal {
   padding: 0;
   border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--surface-1);
+  background: var(--surface-solid);
   color: var(--text-primary);
-  width: min(720px, calc(100vw - 32px));
+  width: min(760px, calc(100vw - 32px));
   max-height: calc(100vh - 64px);
   overflow: hidden;
 }
-.modal::backdrop { background: rgb(0 0 0 / 0.55); }
+.modal::backdrop { background: rgba(5, 6, 12, 0.72); }
 .modal-body { display: flex; flex-direction: column; max-height: calc(100vh - 64px); }
 .modal-head {
-  padding: 14px 16px;
+  padding: 18px 24px;
   border-bottom: 1px solid var(--border);
-  position: sticky; top: 0; background: var(--surface-1); z-index: 1;
+  position: sticky; top: 0; background: var(--surface-solid); z-index: 1;
 }
-.modal-content { padding: 16px; overflow-y: auto; }
+.modal-content { padding: 24px; overflow-y: auto; }
 
 /* Hover readout for the bucket map. Positioned against the canvas wrapper and
    never intercepting the pointer, or it would fight the mousemove it exists to
@@ -205,46 +292,61 @@ body:has(.ambient) .wrap { position: relative; z-index: 1; }
 .tooltip.is-fixed { position: fixed; z-index: 20; }
 .tooltip {
   position: absolute; pointer-events: none; z-index: 5;
-  background: var(--surface-1); color: var(--text-primary);
-  border: 1px solid var(--border); border-radius: 6px;
-  padding: 6px 8px; font-size: 12px; line-height: 1.4;
+  background: var(--surface-solid); color: var(--text-primary);
+  border: 1px solid var(--border);
+  padding: 7px 10px; font-size: 12px; line-height: 1.4;
   font-variant-numeric: tabular-nums; white-space: nowrap;
-  box-shadow: 0 2px 8px rgb(0 0 0 / 0.18);
 }
-.tile-sub { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
 
 table { width: 100%; border-collapse: collapse; }
 th {
-  text-align: left; font-weight: 600; font-size: 12px; color: var(--text-secondary);
-  padding: 6px 10px 6px 0; border-bottom: 1px solid var(--grid); white-space: nowrap;
+  text-align: left; font-weight: 400;
+  padding: 12px 16px 10px 0; border-bottom: 1px solid var(--rule); white-space: nowrap;
 }
-td { padding: 9px 10px 9px 0; border-bottom: 1px solid var(--grid); vertical-align: middle; }
+td { padding: 16px 16px 16px 0; border-bottom: 1px solid rgba(232, 231, 238, 0.12); vertical-align: middle; }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 tr:last-child td { border-bottom: none; }
 .scroll-x { overflow-x: auto; }
 
-/* Meter: fill carries severity; the track is a washed step of the fill's own
-   ramp so state reads across the whole bar rather than just the filled part. */
+/* Meter: thin, neutral track, lit fill.
+   The track stays one grey at every severity. It used to be a washed step of
+   the fill's own ramp, on the theory that state should read across the whole
+   bar — but at 6px with a glow, a tinted track and a saturated fill read as
+   two segments of one bar, so a nearly-empty meter looked part-full. Grey
+   track, coloured fill: the lit part is the reading. */
 .meter {
-  display: block; height: 8px; border-radius: 4px; overflow: hidden;
-  min-width: 80px; background: var(--grid);
+  display: block; height: 6px; overflow: hidden;
+  min-width: 80px; background: rgba(232, 231, 238, 0.12);
 }
-.meter > i { display: block; height: 100%; border-radius: 4px; background: var(--seq-450); min-width: 2px; }
-.meter.good { background: color-mix(in srgb, var(--good) 20%, transparent); }
-.meter.warning { background: color-mix(in srgb, var(--warning) 22%, transparent); }
-.meter.critical { background: color-mix(in srgb, var(--critical) 20%, transparent); }
-.meter.good > i { background: var(--good); }
-.meter.warning > i { background: var(--warning); }
-.meter.critical > i { background: var(--critical); }
+.meter > i { display: block; height: 100%; background: var(--seq-450); min-width: 2px; box-shadow: 0 0 10px currentColor; }
+.meter.good > i { background: var(--good); box-shadow: 0 0 10px rgba(127, 227, 196, 0.8); }
+.meter.warning > i { background: var(--warning); box-shadow: 0 0 10px rgba(250, 178, 25, 0.8); }
+.meter.critical > i { background: var(--critical); box-shadow: 0 0 10px rgba(236, 48, 19, 0.8); }
 
-.status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
-.status::before {
-  content: ''; width: 8px; height: 8px; border-radius: 50%;
-  background: var(--text-muted);
+/* ── status pill ─────────────────────────────────────────────────────────
+   A bordered, tracked, uppercase chip carrying its own colour — legible as a
+   state at a glance, and never colour-alone: the word inside says the same
+   thing the hue does. */
+.status {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase;
+  border: 1px solid var(--border); padding: 6px 10px;
+  color: var(--text-secondary);
 }
-.status.good::before { background: var(--good); box-shadow: 0 0 10px 2px rgba(127, 227, 196, 0.9); }
-.status.warning::before { background: var(--warning); box-shadow: 0 0 10px 2px rgba(250, 178, 25, 0.85); }
-.status.critical::before { background: var(--critical); box-shadow: 0 0 12px 3px rgba(236, 48, 19, 0.85); }
+.status::before {
+  content: ''; flex: none; width: 6px; height: 6px;
+  background: currentColor;
+}
+.status.good { color: var(--good); border-color: rgba(127, 227, 196, 0.4); }
+.status.warning { color: var(--warning); border-color: rgba(250, 178, 25, 0.45); }
+.status.critical { color: var(--critical); border-color: rgba(236, 48, 19, 0.5); }
+.status.good::before { box-shadow: 0 0 10px 2px rgba(127, 227, 196, 0.9); }
+.status.warning::before { box-shadow: 0 0 10px 2px rgba(250, 178, 25, 0.85); }
+.status.critical::before { box-shadow: 0 0 12px 3px rgba(236, 48, 19, 0.85); }
+/* Only the node chip pulses. It is the one state that is a live reading rather
+   than a stored fact, and animating the others would spend the eye's attention
+   on things that are not changing. */
+.status.is-live::before { animation: twinkle 2.6s ease-in-out infinite; }
 
 /* Horizontal bars: <=24px thick, 4px rounded data-end, square at baseline. */
 .bars { display: grid; gap: 8px; }
@@ -258,31 +360,44 @@ tr:last-child td { border-bottom: none; }
 .bar-row.is-dim .bar-fill { opacity: 0.45; }
 
 input[type='range'] { width: 100%; accent-color: var(--series-1); }
-label.field { display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
+label.field { display: block; margin-bottom: 8px; }
 button {
-  font: inherit; padding: 7px 14px; border-radius: 7px; cursor: pointer;
-  border: 1px solid var(--border); background: var(--surface-1); color: var(--text-primary);
+  font: inherit; font-size: 13px; padding: 8px 16px; cursor: pointer;
+  border: 1px solid var(--baseline); background: transparent; color: var(--text-primary);
+  transition: background-color 120ms ease-out, color 120ms ease-out;
 }
-button.primary { background: var(--series-1); border-color: transparent; color: #fff; }
+button:hover:not(:disabled) { background: rgba(232, 231, 238, 0.08); }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 input[type='text'], input[type='number'] {
-  font: inherit; padding: 7px 10px; border-radius: 7px;
-  border: 1px solid var(--border); background: var(--plane); color: var(--text-primary);
+  font: inherit; font-size: 13px; padding: 8px 12px;
+  border: 1px solid var(--baseline); background: rgba(5, 6, 12, 0.6); color: var(--text-primary);
 }
+input[type='text']:focus, input[type='number']:focus {
+  outline: none; border-color: var(--series-1);
+}
+
+/* Advisory strips. The left bar carries the severity and the tint keeps the
+   block readable as one unit; square, because a rounded strip floats free of
+   the text column it belongs to. */
 .warn {
-  border-left: 3px solid var(--warning); background: color-mix(in srgb, var(--warning) 8%, transparent);
-  padding: 8px 12px; border-radius: 0 6px 6px 0; margin-top: 8px; font-size: 13px;
+  border-left: 3px solid var(--warning);
+  background: color-mix(in srgb, var(--warning) 7%, transparent);
+  padding: 12px 16px; margin-top: 10px; font-size: 13.5px; line-height: 1.5;
 }
-.err { border-left-color: var(--critical); background: color-mix(in srgb, var(--critical) 8%, transparent); }
+.err {
+  border-left-color: var(--critical);
+  background: color-mix(in srgb, var(--critical) 8%, transparent);
+}
 .banner {
-  padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; font-size: 13px;
+  padding: 12px 16px; margin-bottom: 24px; font-size: 13.5px; line-height: 1.5;
   border: 1px solid var(--border);
 }
 /* Only one banner state remains: auto top-up disabled. The armed state is
    normal operation and shows a header chip instead. */
 .banner.warn {
   border-left: 3px solid var(--warning);
-  background: color-mix(in srgb, var(--warning) 8%, transparent);
+  background: color-mix(in srgb, var(--warning) 7%, transparent);
+  margin-top: 0;
 }
 
 /* Row link into a batch, and the way back out. */
@@ -290,13 +405,12 @@ input[type='text'], input[type='number'] {
   color: var(--series-1); text-decoration: none; font-size: 13px; white-space: nowrap;
 }
 .rowlink:hover, .backlink:hover { text-decoration: underline; }
-.backlink { font-size: 13px; }
 tr:hover .rowlink { text-decoration: underline; }
 
 /* Reference chip: looks like a value, behaves like a copy button. */
 .reflink {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px; padding: 3px 8px; border-radius: 6px;
+  font-size: 12px; padding: 4px 9px;
   background: transparent; border: 1px solid var(--border); color: var(--text-secondary);
 }
 .reflink:hover { color: var(--text-primary); border-color: var(--baseline); }
@@ -305,43 +419,59 @@ tr:hover .rowlink { text-decoration: underline; }
    are one reading of one batch — but they are independent axes with
    independent remedies, so a rule keeps them from running together.
    `align-items: start` stops one half's expanded panel stretching the other. */
-.vitals { display: grid; gap: 20px; align-items: start; }
+.vitals { display: grid; gap: 24px; align-items: start; }
 @media (min-width: 760px) {
   .vitals { grid-template-columns: 1fr 1fr; }
-  .vitals > :last-child { border-left: 1px solid var(--border); padding-left: 20px; }
+  /* --rule, not --grid: this divider was asked for explicitly and is the only
+     thing separating two independent readings, so it has to be seen. */
+  .vitals > :last-child { border-left: 1px solid var(--rule); padding-left: 24px; }
 }
 @media (max-width: 759px) {
-  .vitals > :last-child { border-top: 1px solid var(--border); padding-top: 20px; }
+  .vitals > :last-child { border-top: 1px solid var(--rule); padding-top: 24px; }
 }
 
 /* Clickable rows. The hover tint is the only affordance a table row has, so it
    has to be visible without being loud enough to read as selection. */
 tr.is-clickable { cursor: pointer; }
-tr.is-clickable:hover td { background: color-mix(in srgb, var(--series-1) 7%, transparent); }
+tr.is-clickable:hover td { background: rgba(232, 231, 238, 0.04); }
 tr.is-clickable:hover .rowlink { text-decoration: underline; }
 
 /* Two named options with their consequences, rather than a bare checkbox: the
    choice is permanent, so the trade-off belongs next to it. */
-.choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; }
+.choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
 .choice {
-  display: flex; gap: 10px; align-items: flex-start; cursor: pointer;
-  border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px;
+  display: flex; gap: 12px; align-items: flex-start; cursor: pointer;
+  border: 1px solid var(--border); padding: 14px 16px;
 }
 .choice.is-on { border-color: var(--series-1); background: color-mix(in srgb, var(--series-1) 6%, transparent); }
 .choice input { margin-top: 3px; accent-color: var(--series-1); }
-.choice .tile-sub { margin-top: 4px; }
+.choice .tile-sub { margin-top: 5px; }
 
 /* Settings: two columns on a wide screen, one on a narrow. Wider than the stat
    tiles because these hold editable fields with labels and hints. */
-.settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+.settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+
+/* ── the two spending buttons ────────────────────────────────────────────
+   The primary action is filled and lit, which on a black page is what
+   separates "this is the button" from "this is a box with a word in it". */
+button.primary {
+  background: var(--critical); border-color: var(--critical); color: #fff;
+  font-weight: 600;
+  box-shadow: 0 0 18px 2px rgba(236, 48, 19, 0.45);
+}
+button.primary:hover:not(:disabled) {
+  background: #ff4426; box-shadow: 0 0 22px 4px rgba(236, 48, 19, 0.65);
+}
 
 /* The commit step of a two-click action. Distinct from .primary so the second
    press is visibly the one that does something irreversible, rather than a
-   quieter version of the button that did not. */
+   quieter version of the button that did not — it is the only control on
+   screen that spends money. */
 button.danger {
   background: var(--critical); border-color: var(--critical); color: #fff; font-weight: 600;
+  box-shadow: 0 0 20px 3px rgba(236, 48, 19, 0.7);
 }
-button.danger:hover:not(:disabled) { filter: brightness(1.08); }
+button.danger:hover:not(:disabled) { background: #ff4426; filter: brightness(1.05); }
 
 /* A button that reads as a link — used inline inside descriptive text where a
    real button would break the sentence. */
@@ -349,30 +479,4 @@ button.danger:hover:not(:disabled) { filter: brightness(1.08); }
   background: none; border: none; padding: 0; font: inherit; cursor: pointer;
   color: var(--series-1); text-decoration: underline;
 }
-
-/* ── galaxy accents ──────────────────────────────────────────────────── */
-
-/* The primary action glows, which on a black page is what separates "this is
-   the button" from "this is a box with a word in it". */
-button.primary {
-  background: var(--critical); border-color: var(--critical); color: #fff;
-  box-shadow: 0 0 18px 2px rgba(236, 48, 19, 0.45);
-}
-button.primary:hover:not(:disabled) { box-shadow: 0 0 22px 4px rgba(236, 48, 19, 0.65); }
-
-/* The commit step of a two-click action glows harder still — it is the only
-   control on screen that spends money. */
-button.danger { box-shadow: 0 0 20px 3px rgba(236, 48, 19, 0.7); }
-
-/* Meters sit on the page rather than in a card, so their track needs to read
-   against the sky. */
-.meter { background: rgba(232, 231, 238, 0.12); }
-.meter > i { box-shadow: 0 0 8px currentColor; }
-.meter.good > i { box-shadow: 0 0 8px rgba(127, 227, 196, 0.8); }
-.meter.warning > i { box-shadow: 0 0 8px rgba(250, 178, 25, 0.8); }
-.meter.critical > i { box-shadow: 0 0 8px rgba(236, 48, 19, 0.8); }
-
-.modal { background: var(--surface-solid); }
-.modal::backdrop { background: rgba(5, 6, 12, 0.72); }
-.tooltip { background: var(--surface-solid); }
-.map-bar { background: var(--surface-1); backdrop-filter: blur(8px); }
+.linkish:hover { background: none; color: var(--critical); }

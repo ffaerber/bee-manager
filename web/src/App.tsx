@@ -34,7 +34,7 @@ export default function App() {
     const disabled = /disabled/i.test(err ?? '');
     return (
       <div className="wrap">
-        <h1>Swarm stamp monitor</h1>
+        <h1 className="brand">Swarm stamp monitor</h1>
         <div className="card" style={{ maxWidth: 520 }}>
           <h2 style={{ marginBottom: 12 }}>{disabled ? 'Admin API disabled' : 'Admin token required'}</h2>
           {disabled ? (
@@ -74,9 +74,13 @@ export default function App() {
   return (
     <div className="wrap">
       <div className="spread" style={{ marginBottom: 16 }}>
-        <h1>Swarm stamp monitor</h1>
+        <h1 className="brand">Swarm stamp monitor</h1>
         <div className="row">
-          <span className={`status ${state.ok ? 'good' : 'critical'}`}>
+          {/* `is-live` pulses the dot. Only this chip gets it: reachability is
+              the one state here that is a live reading rather than a stored
+              fact, and animating the rest would spend attention on things that
+              are not changing. */}
+          <span className={`status is-live ${state.ok ? 'good' : 'critical'}`}>
             {state.ok ? 'node reachable' : 'node unreachable'}
           </span>
           {armed && (
@@ -132,11 +136,11 @@ function Overview({ state }: { state: State }) {
       <div className="spread" style={{ alignItems: 'flex-end', marginBottom: 16 }}>
         <div>
           <div className="hero-label">Runway at the current burn rate</div>
-          <div className="hero-value">
+          <div className={`hero-value ${sev}`}>
             {isFinite(runway) ? Math.round(runway).toLocaleString() : '∞'}
             <span className="hero-unit">days</span>
           </div>
-          <div className={`status ${sev}`} style={{ marginTop: 6 }}>
+          <div className={`status ${sev}`} style={{ marginTop: 14 }}>
             {sev === 'good' ? 'comfortable' : sev === 'warning' ? 'under three months' : 'under a month'}
           </div>
         </div>

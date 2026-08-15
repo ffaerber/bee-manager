@@ -1033,8 +1033,15 @@ function rejectReason(file: File, data: BucketGrid): string | null {
 
 function Key({ color, label }: { color: string; label: string }) {
   return (
-    <span className="row" style={{ gap: 6, alignItems: 'center' }}>
-      <span style={{ width: 12, height: 12, background: color, borderRadius: 3, display: 'inline-block' }} />
+    <span className="row" style={{ gap: 7, alignItems: 'center' }}>
+      {/* Square, and outlined. The fill stays the map's true colour — but
+          "empty" is near-black by design, so without a hairline its swatch
+          would be an invisible hole in the legend. The border shows the
+          swatch's extent without misreporting its colour. */}
+      <span style={{
+        width: 11, height: 11, background: color, display: 'inline-block',
+        border: '1px solid var(--grid)',
+      }} />
       <span className="secondary">{label}</span>
     </span>
   );

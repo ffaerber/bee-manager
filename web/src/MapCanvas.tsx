@@ -69,9 +69,10 @@ export function MapCanvas({ fills, bucketUpperBound, mode, onHover }: {
 
       const img = ctx.createImageData(w, h);
       const d = img.data;
-      // Opaque black everywhere: a night sky has no holes in it.
-      for (let i = 3; i < d.length; i += 4) d[i] = 255;
-
+      // Left TRANSPARENT rather than filled opaque black, so the page's nebula
+      // gradients show through and the stars sit inside them. Painting the sky
+      // black here would flatten the background to a single value and throw
+      // away the depth the gradients give it.
       const cellW = w / cols;
       const cellH = h / rows;
 
@@ -106,6 +107,9 @@ export function MapCanvas({ fills, bucketUpperBound, mode, onHover }: {
         d[o] = Math.min(255, d[o] + Math.round(v * 0.92));
         d[o + 1] = Math.min(255, d[o + 1] + Math.round(v * 0.96));
         d[o + 2] = Math.min(255, d[o + 2] + v);
+        // Alpha carries the star too, now that the sky is transparent. Without
+        // this every pixel stays invisible no matter how bright its RGB is.
+        d[o + 3] = Math.min(255, d[o + 3] + v);
       };
 
       for (let i = 0; i < fills.length; i++) {
