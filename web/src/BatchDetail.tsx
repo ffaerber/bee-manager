@@ -345,7 +345,10 @@ function BatchFacts({ b, state, onChange }: {
         <div>
           <div className="tile-label">Depth</div>
           <div className="tile-value" style={{ fontSize: 18 }}>{b.depth}</div>
-          <div className="tile-sub">{b.capacityHuman} nominal</div>
+          {/* Not the nominal capacity — the buckets card below already gives
+              that, and each card citing the other says nothing twice. The
+              fact worth stating here is that this number is one-way. */}
+          <div className="tile-sub">only ever increases</div>
         </div>
 
         <div>
