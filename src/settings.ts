@@ -40,7 +40,7 @@ interface Spec {
    * actually is) but shown and entered as 0–100. Nobody reads "0.9 of 1.0" as
    * ninety percent without translating it first.
    */
-  kind: 'bool' | 'int' | 'float' | 'percent' | 'bzz' | 'string';
+  kind: 'bool' | 'int' | 'float' | 'percent' | 'depth' | 'bzz' | 'string';
   /** Direction that weakens this guard, or null when it guards nothing. */
   looserWhen: Guard;
   /** Human label for the dashboard. */
@@ -80,8 +80,8 @@ export const EDITABLE: Spec[] = [
   { group: 'limits', key: 'maxTopupBzzPerDay', kind: 'bzz', looserWhen: 'higher',
     label: 'Max per 24 hours', hint: 'xBZZ',
     risk: 'This bounds a runaway loop rather than one action. Raising it widens the worst day.' },
-  { group: 'limits', key: 'maxAutoDiluteDepth', kind: 'int', looserWhen: 'higher',
-    min: 17, max: 41, label: 'Never auto-dilute past depth', hint: 'depth',
+  { group: 'limits', key: 'maxAutoDiluteDepth', kind: 'depth', looserWhen: 'higher',
+    min: 17, max: 41, label: 'Never auto-dilute past', hint: 'each step doubles capacity and cost',
     risk: 'Dilution cannot be undone and doubles every future top-up. Each extra depth doubles it again.' },
   { group: 'limits', key: 'minWalletBzz', kind: 'bzz', looserWhen: 'lower',
     label: 'Keep at least', hint: 'xBZZ in the wallet',

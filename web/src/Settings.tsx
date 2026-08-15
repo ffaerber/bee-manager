@@ -17,6 +17,7 @@ import * as api from './api';
 import type { SettingSpec, SettingsResponse } from './api';
 import { link } from './router';
 import { fmtBytes } from './format';
+import { RangeSlider, depthCapacity } from './RangeSlider';
 
 const GROUPS: { id: SettingSpec['group']; title: string; blurb: string }[] = [
   { id: 'automation', title: 'Automation',
@@ -150,16 +151,20 @@ function Field({ s, busy, onSave }: {
     );
   }
 
-  if (s.kind === 'percent') {
-    // Bounded value, so a slider — the range is the useful context, same as
-    // the wizard's depth and duration. Commits on release: dragging fires
-    // continuously and every one of those would be a PATCH and a ledger entry.
+  if (s.kind === 'percent' || s.kind === 'depth') {
+    // Bounded values get a slider — the range is the context a number field
+    // cannot give. Depth is labelled with the capacity it buys, because "22"
+    // means nothing and "17.2 GB" means something.
     return (
       <div>
         <div className="tile-label">{s.label}</div>
-        <PercentSlider
-          value={Number(s.value ?? 0)} min={s.min ?? 0} max={s.max ?? 100}
-          disabled={busy} onCommit={onSave}
+        <RangeSlider
+          value={Number(s.value ?? 0)}
+          min={s.min ?? 0} max={s.max ?? 100}
+          step={s.kind === 'percent' ? 5 : 1}
+          disabled={busy}
+          format={(v) => s.kind === 'percent' ? `${v}%` : `d${v} · ${depthCapacity(v)}`}
+          onCommit={onSave}
         />
         {s.hint && <div className="tile-sub">{s.hint}</div>}
       </div>
@@ -185,34 +190,6 @@ function Field({ s, busy, onSave }: {
         }}
       />
       {s.hint && <div className="tile-sub">{s.hint}</div>}
-    </div>
-  );
-}
-
-function PercentSlider({ value, min, max, disabled, onCommit }: {
-  value: number; min: number; max: number; disabled: boolean; onCommit: (v: number) => void;
-}) {
-  const [shown, setShown] = useState(value);
-  const [dragging, setDragging] = useState(false);
-  useEffect(() => { if (!dragging) setShown(value); }, [value, dragging]);
-  const commit = () => { setDragging(false); if (shown !== value) onCommit(shown); };
-
-  return (
-    <div>
-      <div className="row" style={{ gap: 10, flexWrap: 'nowrap', alignItems: 'center' }}>
-        <input
-          type="range" min={min} max={max} step={5} value={shown} disabled={disabled}
-          onChange={(e) => { setDragging(true); setShown(Number(e.target.value)); }}
-          onMouseUp={commit} onTouchEnd={commit} onKeyUp={commit}
-          style={{ flex: 1 }}
-        />
-        <span className="mono" style={{ minWidth: 44, textAlign: 'right', fontWeight: 600 }}>
-          {shown}%
-        </span>
-      </div>
-      <div className="row spread muted" style={{ fontSize: 11 }}>
-        <span>{min}%</span><span>{max}%</span>
-      </div>
     </div>
   );
 }

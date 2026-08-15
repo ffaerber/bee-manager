@@ -152,7 +152,7 @@ export const uploadToBatch = (id: string, file: File) =>
   );
 /** One runtime setting, with its environment value and any override. */
 export interface SettingSpec {
-  key: string; kind: 'bool' | 'int' | 'float' | 'percent' | 'bzz' | 'string';
+  key: string; kind: 'bool' | 'int' | 'float' | 'percent' | 'depth' | 'bzz' | 'string';
   group: 'automation' | 'thresholds' | 'limits' | 'alerts' | 'sharing';
   /** Direction that weakens this guard, or null when it guards nothing. */
   looserWhen: 'higher' | 'lower' | null;
