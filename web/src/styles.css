@@ -1,74 +1,73 @@
-/* Palette roles from the reference data-viz palette. Dark values are declared
-   under both the media query (OS setting) and the [data-theme] scope (explicit
-   toggle), so the toggle wins in both directions. */
+/* ── Galaxy theme ────────────────────────────────────────────────────────
+   A dark, single-mode palette: the page is a night sky and the map is drawn
+   on it, so there is no light variant to switch to — a white background would
+   make the star field meaningless.
+
+   Colours validated against the surface (#05060c) with
+   scripts/validate_palette.js:
+
+     status  good/warning/critical — CVD ΔE 15.7, normal 20.3, all >= 3:1
+     map     #256abf/#6da7ec/#cde2fb + amber + red — CVD 18.6, normal 19.2
+
+   The map ramp had to move UP from the old #184f95 low end: on a near-black
+   page that step sat at 2.5:1 and vanished into the background. On a dark
+   surface a sequential ramp runs dim-to-bright, not light-to-dark.
+
+   Archivo is bundled rather than fetched: the dashboard is behind auth on a
+   homelab and should not depend on reaching Google's CDN to render. */
+
+@font-face {
+  font-family: 'Archivo';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('./fonts/archivo-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Archivo';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('./fonts/archivo-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
 :root {
-  color-scheme: light;
-  --surface-1: #fcfcfb;
-  --plane: #f9f9f7;
-  --text-primary: #0b0b0b;
-  --text-secondary: #52514e;
-  --text-muted: #898781;
-  --grid: #e1e0d9;
-  --baseline: #c3c2b7;
-  --border: rgba(11, 11, 11, 0.1);
-
-  --series-1: #2a78d6;
-  --seq-250: #86b6ef;
-  --seq-450: #2a78d6;
-  --seq-600: #184f95;
-
-  /* Bucket-map fill ramp. Three anchors spanning most of the blue 100-700
-     scale, so adjacent fill levels are actually distinguishable — the previous
-     250/450/600 slice was too narrow to read. Sequential, one hue, monotone
-     lightness. The danger states are NOT on this ramp: they use the reserved
-     warning/critical status colours, so "getting full" and "full" read as
-     states rather than as two more shades of the same blue. */
-  --map-low: #b7d3f6;
-  --map-mid: #3987e5;
-  --map-high: #184f95;
-
-  --good: #0ca30c;
-  --warning: #fab219;
-  --serious: #ec835a;
-  --critical: #d03b3b;
-}
-@media (prefers-color-scheme: dark) {
-  :root:where(:not([data-theme='light'])) {
-    color-scheme: dark;
-    --surface-1: #1a1a19;
-    --plane: #0d0d0d;
-    --text-primary: #ffffff;
-    --text-secondary: #c3c2b7;
-    --text-muted: #898781;
-    --grid: #2c2c2a;
-    --baseline: #383835;
-    --border: rgba(255, 255, 255, 0.1);
-    --series-1: #3987e5;
-    --seq-250: #184f95;
-    --seq-450: #3987e5;
-    --seq-600: #86b6ef;
-    --map-low: #184f95;
-    --map-mid: #3987e5;
-    --map-high: #b7d3f6;
-  }
-}
-:root[data-theme='dark'] {
   color-scheme: dark;
-  --surface-1: #1a1a19;
-  --plane: #0d0d0d;
-  --text-primary: #ffffff;
-  --text-secondary: #c3c2b7;
-  --text-muted: #898781;
-  --grid: #2c2c2a;
-  --baseline: #383835;
-  --border: rgba(255, 255, 255, 0.1);
-  --series-1: #3987e5;
-  --seq-250: #184f95;
-  --seq-450: #3987e5;
-  --seq-600: #86b6ef;
-  --map-low: #184f95;
-  --map-mid: #3987e5;
-  --map-high: #b7d3f6;
+
+  --plane: #05060c;
+  /* Translucent over the star field, so the map shows faintly through every
+     card rather than being hidden by them. */
+  --surface-1: rgba(8, 9, 22, 0.78);
+  --surface-solid: #0a0b16;
+
+  --text-primary: #e8e7ee;
+  --text-secondary: rgba(232, 231, 238, 0.62);
+  --text-muted: rgba(232, 231, 238, 0.45);
+
+  --border: rgba(232, 231, 238, 0.18);
+  --grid: rgba(232, 231, 238, 0.14);
+  --baseline: rgba(232, 231, 238, 0.3);
+
+  --series-1: #ff6a4d;
+
+  /* Sequential ramp for the bucket map, dim to bright. */
+  --map-low: #256abf;
+  --map-mid: #6da7ec;
+  --map-high: #cde2fb;
+  --seq-250: #256abf;
+  --seq-450: #6da7ec;
+  --seq-600: #cde2fb;
+
+  --good: #7fe3c4;
+  --warning: #fab219;
+  --serious: #ff6a4d;
+  --critical: #ec3013;
 }
 
 * { box-sizing: border-box; }
@@ -76,8 +75,12 @@ body {
   margin: 0;
   background: var(--plane);
   color: var(--text-primary);
-  font: 14px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font: 14px/1.5 Archivo, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
+a { color: var(--series-1); text-decoration: none; }
+a:hover { color: var(--critical); }
+::selection { background: rgba(236, 48, 19, 0.35); }
 h1, h2 { font-weight: 600; margin: 0; }
 h1 { font-size: 18px; }
 h2 { font-size: 14px; color: var(--text-secondary); letter-spacing: 0.02em; }
@@ -86,7 +89,10 @@ h2 { font-size: 14px; color: var(--text-secondary); letter-spacing: 0.02em; }
 .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .spread { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
 .card {
+  /* Translucent and blurred, so the star field reads faintly behind every
+     panel instead of being covered by it. */
   background: var(--surface-1);
+  backdrop-filter: blur(8px);
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 16px;
@@ -229,10 +235,13 @@ tr:last-child td { border-bottom: none; }
 .meter.critical > i { background: var(--critical); }
 
 .status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
-.status::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); }
-.status.good::before { background: var(--good); }
-.status.warning::before { background: var(--warning); }
-.status.critical::before { background: var(--critical); }
+.status::before {
+  content: ''; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--text-muted);
+}
+.status.good::before { background: var(--good); box-shadow: 0 0 10px 2px rgba(127, 227, 196, 0.9); }
+.status.warning::before { background: var(--warning); box-shadow: 0 0 10px 2px rgba(250, 178, 25, 0.85); }
+.status.critical::before { background: var(--critical); box-shadow: 0 0 12px 3px rgba(236, 48, 19, 0.85); }
 
 /* Horizontal bars: <=24px thick, 4px rounded data-end, square at baseline. */
 .bars { display: grid; gap: 8px; }
@@ -337,3 +346,30 @@ button.danger:hover:not(:disabled) { filter: brightness(1.08); }
   background: none; border: none; padding: 0; font: inherit; cursor: pointer;
   color: var(--series-1); text-decoration: underline;
 }
+
+/* ── galaxy accents ──────────────────────────────────────────────────── */
+
+/* The primary action glows, which on a black page is what separates "this is
+   the button" from "this is a box with a word in it". */
+button.primary {
+  background: var(--critical); border-color: var(--critical); color: #fff;
+  box-shadow: 0 0 18px 2px rgba(236, 48, 19, 0.45);
+}
+button.primary:hover:not(:disabled) { box-shadow: 0 0 22px 4px rgba(236, 48, 19, 0.65); }
+
+/* The commit step of a two-click action glows harder still — it is the only
+   control on screen that spends money. */
+button.danger { box-shadow: 0 0 20px 3px rgba(236, 48, 19, 0.7); }
+
+/* Meters sit on the page rather than in a card, so their track needs to read
+   against the sky. */
+.meter { background: rgba(232, 231, 238, 0.12); }
+.meter > i { box-shadow: 0 0 8px currentColor; }
+.meter.good > i { box-shadow: 0 0 8px rgba(127, 227, 196, 0.8); }
+.meter.warning > i { box-shadow: 0 0 8px rgba(250, 178, 25, 0.8); }
+.meter.critical > i { box-shadow: 0 0 8px rgba(236, 48, 19, 0.8); }
+
+.modal { background: var(--surface-solid); }
+.modal::backdrop { background: rgba(5, 6, 12, 0.72); }
+.tooltip { background: var(--surface-solid); }
+.map-bar { background: var(--surface-1); backdrop-filter: blur(8px); }
