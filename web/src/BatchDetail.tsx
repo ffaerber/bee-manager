@@ -284,12 +284,15 @@ export function BatchDetail({ batchId, state, onChange }: {
 }
 
 /**
- * The batch's own properties — everything the overview row shows, plus the
- * things that only fit on a page: the full id, the projected expiry date, and
- * what the reported utilisation actually means.
+ * What this batch IS, and the two things about it you can change.
  *
- * Editable here for the same reason it is editable in the row: this is the page
- * you are on when you decide a batch needs renaming or retiring.
+ * Deliberately holds no measurements. Remaining life and utilisation both used
+ * to appear here as well as in the vitals card above — the same numbers twice,
+ * once as a meter and once as text, which invites the reader to check whether
+ * they agree. The meters won: they carry severity colour and the expiry date.
+ *
+ * Editable here for the same reason it is editable in the overview row: this is
+ * the page you are on when you decide a batch needs renaming or retiring.
  */
 function BatchFacts({ b, state, onChange }: {
   b: Batch; state: State; onChange: () => void | Promise<void>;
@@ -340,20 +343,6 @@ function BatchFacts({ b, state, onChange }: {
         </div>
 
         <div>
-          <div className="tile-label">Remaining life</div>
-          <div className="row" style={{ gap: 8, flexWrap: 'nowrap', marginTop: 2 }}>
-            <span className={`meter ${sev}`} style={{ width: 70 }}>
-              <i style={{ width: `${Math.max(2, Math.min(100, (b.ttlDays / 90) * 100))}%` }} />
-            </span>
-            <span className="mono" style={{ fontWeight: 600 }}>{fmtDays(b.ttlDays)}</span>
-          </div>
-          <div className="tile-sub">
-            {b.ttlDays > 0 ? `until ${expiryDate(b.ttlDays)}` : 'expired'}
-            {sev === 'warning' && ` · below the ${threshold}d threshold`}
-          </div>
-        </div>
-
-        <div>
           <div className="tile-label">Depth</div>
           <div className="tile-value" style={{ fontSize: 18 }}>{b.depth}</div>
           <div className="tile-sub">{b.capacityHuman} nominal</div>
@@ -385,13 +374,6 @@ function BatchFacts({ b, state, onChange }: {
           </div>
         </div>
 
-        <div>
-          <div className="tile-label">Reported utilisation</div>
-          <div className="tile-value" style={{ fontSize: 18 }}>{(b.utilizationRatio * 100).toFixed(2)}%</div>
-          {/* Worth showing despite being coarse: this, not the exact chunk
-              count, is what the dilute decision keys off. */}
-          <div className="tile-sub">quantised — drives the dilute rule</div>
-        </div>
       </div>
 
       <div className="row" style={{ marginTop: 12, gap: 8 }}>

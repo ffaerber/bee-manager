@@ -92,13 +92,17 @@ deuteranopia, which would merge "barely used" with "refusing writes".
 
 ## Batch facts
 
-Label and the managed toggle are editable here — this is the page you are on
-when you decide a batch needs renaming or retiring. Adds what only fits on a
-page: the projected expiry date and the full copyable batch ID.
+What the batch **is**, and the two things you can change about it: label, depth,
+managed, flags, and the full copyable id.
 
-`Reported utilisation` is the coarse quantised figure. Shown anyway because it
-is what the **dilute rule keys off** — hiding it would hide the input to a
-decision the daemon makes on its own.
+Deliberately holds no measurements. Remaining life and utilisation used to
+appear here as well as in the vitals card above — the same numbers twice, once
+as a meter and once as text, which invites the reader to check whether they
+agree. The meters won: they carry severity colour and the projected expiry date.
+
+Depth's sub-line says "only ever increases" rather than repeating the nominal
+capacity, which the buckets card already gives — each card citing the other
+said nothing twice.
 
 ## Policy for this batch
 
