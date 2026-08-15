@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from 'bun:test';
-import { countdown } from '../web/src/format';
+import { countdown, runwayRemainingMs } from '../web/src/format';
 
 const D = 86_400_000, H = 3_600_000, M = 60_000, S = 1_000;
 
@@ -46,5 +46,37 @@ describe('countdown', () => {
     expect(a.days).toBe(3); expect(a.clock).toBe('00:00:00');
     expect(b.days).toBe(2); expect(b.clock).toBe('23:59:59');
     expect(c.days).toBe(2); expect(c.clock).toBe('23:59:59');
+  });
+});
+
+describe('runwayRemainingMs', () => {
+  const D = 86_400_000;
+
+  it('subtracts both the snapshot age and the time since it arrived', () => {
+    // Server said 10 days, the poll was 2 minutes ago, this tab has held the
+    // response for 30 s: 10 d minus 2.5 minutes.
+    expect(runwayRemainingMs(10, 120_000, 30_000)).toBe(10 * D - 150_000);
+  });
+
+  it('does not jump when a fresh poll replaces a stale one', () => {
+    // A poll interval of 5 min. Just before the new poll the tab is showing a
+    // figure that is 5 min old and has been held 5 min... no: held 5 min since
+    // fetch, and was 0 ms old at fetch.
+    const before = runwayRemainingMs(10, 0, 300_000);
+    // The new poll reports a runway 5 min shorter, freshly computed.
+    const after = runwayRemainingMs(10 - 300_000 / D, 0, 0);
+    expect(Math.abs(before - after)).toBeLessThan(2);
+  });
+
+  it('is continuous when the response itself arrives stale', () => {
+    // Fetching 4 min into a 5 min poll cycle must not show 4 min more than the
+    // truth — which is exactly what dropping ageMs would do.
+    const honest = runwayRemainingMs(10, 240_000, 0);
+    const naive = 10 * D;
+    expect(naive - honest).toBe(240_000);
+  });
+
+  it('stays infinite when nothing is burning', () => {
+    expect(runwayRemainingMs(Infinity, 5_000, 1_000)).toBe(Infinity);
   });
 });

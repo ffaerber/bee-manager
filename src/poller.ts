@@ -45,6 +45,15 @@ export interface PollResult {
   totalRunwayDays: number;
   /** Value paid into the batches and not yet consumed, in xBZZ. */
   committedBzz: number;
+  /**
+   * When this snapshot was taken, in server-clock epoch ms.
+   *
+   * /state serves the cached result, so a caller can receive a figure computed
+   * up to a full poll interval ago. Anything counting down from it has to know
+   * how stale it is, or it runs ahead of the truth and then jumps backwards
+   * every time a fresh poll lands.
+   */
+  polledAt: number;
   error?: string;
 }
 
@@ -155,7 +164,7 @@ export class Poller {
     } catch (e: any) {
       const msg = e?.message ?? String(e);
       await this.alerter.send({ event: 'node_unreachable', level: 'error', message: `Bee unreachable: ${msg}` });
-      this.last = { ok: false, batches: [], plans: [], msPerBlock: this.msPerBlock, burnPer30DaysBzz: 0, runwayDays: 0, totalRunwayDays: 0, committedBzz: 0, error: msg };
+      this.last = { ok: false, batches: [], plans: [], msPerBlock: this.msPerBlock, burnPer30DaysBzz: 0, runwayDays: 0, totalRunwayDays: 0, committedBzz: 0, polledAt: Date.now(), error: msg };
       return this.last;
     }
 
@@ -245,6 +254,7 @@ export class Poller {
       runwayDays,
       totalRunwayDays,
       committedBzz: plurToBzz(committed),
+      polledAt: now,
     };
     this.db.pruneSnapshots(90, now);
     return this.last;

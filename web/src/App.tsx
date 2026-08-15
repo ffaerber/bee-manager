@@ -5,7 +5,7 @@ import { BatchDetail } from './BatchDetail';
 import { batchIdFrom, isSettings, link, navigate, usePath } from './router';
 import { Settings } from './Settings';
 import { Wallet } from './Wallet';
-import { countdown, fmtDays, ttlSeverity } from './format';
+import { countdown, fmtDays, runwayRemainingMs, ttlSeverity } from './format';
 import { Modal } from './Modal';
 import type { Batch, Ladder, Quote, State, Action } from './api';
 
@@ -141,7 +141,7 @@ function Overview({ state }: { state: State }) {
       <div className="spread" style={{ alignItems: 'flex-end', marginBottom: 16 }}>
         <div>
           <div className="hero-label">Runway until everything lapses</div>
-          <Runway days={runway} sev={sev} />
+          <Runway days={runway} sev={sev} ageMs={state.dataAgeMs} />
           <div className={`status ${sev}`} style={{ marginTop: 14 }}>
             {sev === 'good' ? 'comfortable' : sev === 'warning' ? 'under three months' : 'under a month'}
           </div>
@@ -191,8 +191,8 @@ function Overview({ state }: { state: State }) {
  * price changes. The seconds are exact about elapsed time, not about the
  * prediction — this is a rate of consumption made visible, not a deadline.
  */
-function Runway({ days, sev }: { days: number; sev: string }) {
-  const anchor = useMemo(() => ({ at: Date.now(), days }), [days]);
+function Runway({ days, sev, ageMs }: { days: number; sev: string; ageMs: number }) {
+  const anchor = useMemo(() => ({ at: Date.now(), days, ageMs }), [days, ageMs]);
   const [, tick] = useState(0);
   useEffect(() => {
     const t = setInterval(() => tick((n) => n + 1), 1000);
@@ -204,7 +204,15 @@ function Runway({ days, sev }: { days: number; sev: string }) {
     return <div className={`hero-value ${sev}`}>∞<span className="hero-unit">days</span></div>;
   }
 
-  const { days: d, clock, done } = countdown(anchor.days * 86_400_000 - (Date.now() - anchor.at));
+  // Two subtractions, because the figure was already stale when it arrived.
+  // /state serves a cached poll, so `ageMs` is how long the SERVER says it has
+  // been running (server clock, immune to a wrong browser clock), and the
+  // second term is how long it has been since this tab received it. Without
+  // the first, the clock runs up to a full poll interval ahead of the truth
+  // and lurches backwards every time a fresh poll lands.
+  const { days: d, clock, done } = countdown(
+    runwayRemainingMs(anchor.days, anchor.ageMs, Date.now() - anchor.at),
+  );
   return (
     <div className={`hero-value ${sev}`}
       title="Wallet plus the value already paid into the batches, divided by the burn rate. The committed part drains every block, so this falls at one second per second. It jumps up when you deposit or buy, and moves if the chain price changes.">

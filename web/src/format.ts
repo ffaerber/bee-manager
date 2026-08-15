@@ -73,3 +73,25 @@ export function expiryDate(ttlDays: number, now = Date.now()): string {
 export function depthCapacity(depth: number): string {
   return fmtBytes(Math.pow(2, depth) * 4096);
 }
+
+/**
+ * Milliseconds left on a runway figure that was already stale when it arrived.
+ *
+ * `/state` serves a cached poll, so three clocks are involved and only two of
+ * them can be trusted together:
+ *
+ *   days      the runway as computed at poll time, on the server
+ *   ageMs     how long ago that poll was, measured on the SERVER at request
+ *             time — never by comparing a server timestamp to a browser one,
+ *             because a browser clock that is wrong by minutes would corrupt it
+ *   elapsed   how long this tab has had the response, measured by the browser
+ *             against itself, which is safe
+ *
+ * Dropping `ageMs` is the tempting mistake: the clock then runs up to a full
+ * poll interval ahead of the truth and lurches backwards each time a fresh
+ * poll lands.
+ */
+export function runwayRemainingMs(days: number, ageMs: number, elapsedMs: number): number {
+  if (!isFinite(days)) return Infinity;
+  return days * 86_400_000 - ageMs - elapsedMs;
+}

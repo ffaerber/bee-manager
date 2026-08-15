@@ -55,6 +55,8 @@ export interface State {
   totalRunwayDays: number;
   /** Value paid into the batches and not yet consumed, in xBZZ. */
   committedBzz: number;
+  /** Age of this snapshot in ms, measured on the server. /state is cached. */
+  dataAgeMs: number;
   wallet?: {
     bzz: number; xdai: number; address: string;
     chainId: number; chequebookAddress: string;

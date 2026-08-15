@@ -133,6 +133,14 @@ export function createServer(deps: ServerDeps) {
             runwayDays: r.runwayDays,
             totalRunwayDays: r.totalRunwayDays,
             committedBzz: r.committedBzz,
+            /**
+             * How stale this snapshot is, measured entirely on the server
+             * clock at request time. Sent as an AGE rather than a timestamp on
+             * purpose: a client counting down needs to know how far the figure
+             * has already run, and an age is immune to the browser's clock
+             * being wrong, where comparing two absolute timestamps is not.
+             */
+            dataAgeMs: Math.max(0, Date.now() - r.polledAt),
             wallet: r.wallet && {
               bzz: plurToBzz(r.wallet.bzzBalance),
               xdai: Number(r.wallet.nativeTokenBalance) / 1e18,
