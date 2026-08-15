@@ -9,13 +9,12 @@ A real URL, so it can be bookmarked, shared, or pinned on a wall display.
 ```
  ← Batches   t4t-v3                                        [Hide panel]
 
-┌─ vitals ──────────────────────────────────────────────────────────────┐
-│ Remaining life                    Capacity used                       │
-│ ▓▓▓▓▓▓▓░░░░░  56 d                ▓░░░░░░░░░░░  25.0%                 │
-│ until 8 Oct 2026                  fullest bucket 1 of 4 · 471 KB      │
-│                                                                       │
-│ [Extend life]  [Add capacity]      ← disabled when unmanaged          │
-└───────────────────────────────────────────────────────────────────────┘
+┌─ Remaining life ───────────────┐ ┌─ Capacity used ────────────────┐
+│ ▓▓▓▓▓▓▓░░░░░  56 d             │ │ ▓░░░░░░░░░░░  25.0%            │
+│ until 8 Oct 2026               │ │ fullest bucket 1 of 4 · 471 KB │
+│                                │ │ refuses uploads at ~9,066      │
+│ [Extend life]                  │ │ [Add capacity]                 │
+└────────────────────────────────┘ └────────────────────────────────┘
 
      ░░▒░░░░▒░░░░░░░░▒░░░░  ← 65,536 buckets, one cell each, full viewport
      ░░░░░▒░░░░░░▒░░░░░░░░    hover any cell for its stamp count
@@ -49,8 +48,13 @@ A real URL, so it can be bookmarked, shared, or pinned on a wall display.
 ## Vitals — the two numbers that matter
 
 Life and room decide whether a batch is healthy: it dies when either runs out,
-and everything else on the page is detail underneath. They sit above the fold,
-each with a meter, and each with the action that moves it.
+and everything else on the page is detail underneath.
+
+**One card each**, because they are independent axes with independent remedies
+— running out of time and running out of room are different problems and the
+fix for one is not the fix for the other. Each card holds its meter, what that
+meter means for this batch, and the single action that moves it. Opening one
+card's controls leaves the other alone.
 
 The capacity meter tracks the **fullest bucket**, not the average, because that
 is what actually stops a write. Bytes stored appear underneath as context.

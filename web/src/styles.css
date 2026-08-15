@@ -289,9 +289,15 @@ tr:hover .rowlink { text-decoration: underline; }
 }
 .reflink:hover { color: var(--text-primary); border-color: var(--baseline); }
 
-/* The two vitals side by side on a wide screen, stacked on a narrow one. The
-   meters are the point, so they take the width rather than the numbers. */
-.vitals { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+/* Time and room as two cards, side by side on a wide screen and stacked on a
+   narrow one. `align-items: start` so expanding one card's panel does not
+   stretch the other to match. The gap does the spacing, so the cards drop
+   their own bottom margin. */
+.vitals-pair {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 16px; align-items: start; margin-bottom: 16px;
+}
+.vitals-pair > .card { margin-bottom: 0; }
 
 /* Clickable rows. The hover tint is the only affordance a table row has, so it
    has to be visible without being loud enough to read as selection. */

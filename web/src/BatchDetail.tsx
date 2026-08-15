@@ -582,7 +582,13 @@ function Policy({ b, state, onChange }: {
 function Vitals({ b, data, state, onDone }: {
   b: Batch; data: BucketGrid | null; state: State; onDone: () => Promise<void>;
 }) {
-  const [open, setOpen] = useState<'life' | 'room' | null>(null);
+  // One card per axis, each owning its own disclosure. They were sharing a
+  // single `open`, which is what forced them into one card: two meters and two
+  // buttons in a row, with whichever panel you opened appearing underneath
+  // both. Separate state means separate cards, and each action sits with the
+  // number it changes.
+  const [life, setLife] = useState(false);
+  const [room, setRoom] = useState(false);
 
   const threshold = b.effective.topupWhenTtlBelowSec / 86_400;
   const sev = ttlSeverity(b.ttlDays, threshold);
@@ -595,77 +601,82 @@ function Vitals({ b, data, state, onDone }: {
     : b.utilizationRatio >= b.effective.diluteWhenUtilizationAbove ? 'warning' : 'good';
 
   return (
-    <div className="card">
-      <div className="vitals">
-        <div>
-          <div className="tile-label">Remaining life</div>
-          <div className="row" style={{ gap: 10, flexWrap: 'nowrap', margin: '4px 0 4px' }}>
-            <span className={`meter ${sev}`} style={{ flex: 1, height: 12 }}>
-              <i style={{ width: `${ttlPct}%` }} />
-            </span>
-            <span style={{ fontSize: 22, fontWeight: 600, minWidth: 74, textAlign: 'right' }}>
-              {fmtDays(b.ttlDays)}
-            </span>
-          </div>
-          <div className="tile-sub">
-            {b.ttlDays > 0 ? `until ${expiryDate(b.ttlDays)}` : 'expired'}
-            {sev === 'warning' && ` · below the ${threshold}d threshold`}
-          </div>
+    <div className="vitals-pair">
+      {/* ── time ─────────────────────────────────────────────────────── */}
+      <div className="card">
+        <div className="tile-label">Remaining life</div>
+        <div className="row" style={{ gap: 10, flexWrap: 'nowrap', margin: '4px 0' }}>
+          <span className={`meter ${sev}`} style={{ flex: 1, height: 12 }}>
+            <i style={{ width: `${ttlPct}%` }} />
+          </span>
+          <span style={{ fontSize: 22, fontWeight: 600, minWidth: 74, textAlign: 'right' }}>
+            {fmtDays(b.ttlDays)}
+          </span>
+        </div>
+        <div className="tile-sub">
+          {b.ttlDays > 0 ? `until ${expiryDate(b.ttlDays)}` : 'expired'}
+          {sev === 'warning' && ` · below the ${threshold}d threshold`}
         </div>
 
-        <div>
-          {/* The same percentage means opposite things. On an immutable batch
-              it is a countdown to refusing every upload; on a mutable one it is
-              how close the first bucket is to recycling, after which the batch
-              keeps working and quietly loses data. Naming both "Capacity used"
-              hid the difference that matters most. */}
-          <div className="tile-label">
-            {b.immutableFlag ? 'Capacity used' : 'Nearest bucket to recycling'}
-          </div>
-          <div className="row" style={{ gap: 10, flexWrap: 'nowrap', margin: '4px 0 4px' }}>
-            <span className={`meter ${roomSev}`} style={{ flex: 1, height: 12 }}>
-              <i style={{ width: `${fullPct}%` }} />
+        <div className="row" style={{ marginTop: 14 }}>
+          <button className={life ? '' : 'primary'} onClick={() => setLife(!life)}
+            title="Buy more time at the current size">
+            Extend life
+          </button>
+          {!b.managed && (
+            <span className="muted" style={{ fontSize: 12 }}>
+              unmanaged — nothing renews this automatically
             </span>
-            <span style={{ fontSize: 22, fontWeight: 600, minWidth: 74, textAlign: 'right' }}>
-              {(b.utilizationRatio * 100).toFixed(1)}%
-            </span>
-          </div>
-          <div className="tile-sub">
-            {data
-              ? `fullest bucket ${data.maxCollisions} of ${data.bucketUpperBound} · ${fmtBytes(data.storedBytes)} stored`
-              : 'fullest bucket — reading…'}
-          </div>
-          {data && (
-            <div className="tile-sub" style={{ marginTop: 4 }}>
-              {b.immutableFlag
-                ? <>Refuses all uploads at ~{data.firstFullChunks.toLocaleString()} chunks
-                    ({fmtBytes(data.firstFullChunks * 4096)})</>
-                : <>Starts discarding oldest at ~{data.firstFullChunks.toLocaleString()} chunks
-                    ({fmtBytes(data.firstFullChunks * 4096)}) — then keeps accepting</>}
-            </div>
           )}
         </div>
+        {life && <Topup b={b} onDone={async () => { await onDone(); setLife(false); }} />}
       </div>
 
-      <div className="row" style={{ marginTop: 14 }}>
-        <button className={open === 'life' ? '' : 'primary'}
-          onClick={() => setOpen(open === 'life' ? null : 'life')}
-          title="Buy more time at the current size">
-          Extend life
-        </button>
-        <button onClick={() => setOpen(open === 'room' ? null : 'room')}
-          title="More room, at the cost of half the remaining life">
-          Add capacity
-        </button>
-        {!b.managed && (
-          <span className="muted" style={{ fontSize: 12 }}>
-            Unmanaged — nothing renews this automatically. Both actions still work by hand.
+      {/* ── room ─────────────────────────────────────────────────────── */}
+      <div className="card">
+        {/* The same percentage means opposite things. On an immutable batch it
+            is a countdown to refusing every upload; on a mutable one it is how
+            close the first bucket is to recycling, after which the batch keeps
+            working and quietly loses data. */}
+        <div className="tile-label">
+          {b.immutableFlag ? 'Capacity used' : 'Nearest bucket to recycling'}
+        </div>
+        <div className="row" style={{ gap: 10, flexWrap: 'nowrap', margin: '4px 0' }}>
+          <span className={`meter ${roomSev}`} style={{ flex: 1, height: 12 }}>
+            <i style={{ width: `${fullPct}%` }} />
           </span>
+          <span style={{ fontSize: 22, fontWeight: 600, minWidth: 74, textAlign: 'right' }}>
+            {(b.utilizationRatio * 100).toFixed(1)}%
+          </span>
+        </div>
+        <div className="tile-sub">
+          {data
+            ? `fullest bucket ${data.maxCollisions} of ${data.bucketUpperBound} · ${fmtBytes(data.storedBytes)} stored`
+            : 'fullest bucket — reading…'}
+        </div>
+        {data && (
+          <div className="tile-sub" style={{ marginTop: 4 }}>
+            {b.immutableFlag
+              ? <>Refuses all uploads at ~{data.firstFullChunks.toLocaleString()} chunks
+                  ({fmtBytes(data.firstFullChunks * 4096)})</>
+              : <>Starts discarding oldest at ~{data.firstFullChunks.toLocaleString()} chunks
+                  ({fmtBytes(data.firstFullChunks * 4096)}) — then keeps accepting</>}
+          </div>
         )}
-      </div>
 
-      {open === 'life' && <Topup b={b} onDone={async () => { await onDone(); setOpen(null); }} />}
-      {open === 'room' && <Dilute b={b} onDone={async () => { await onDone(); setOpen(null); }} />}
+        <div className="row" style={{ marginTop: 14 }}>
+          <button className={room ? '' : 'primary'} onClick={() => setRoom(!room)}
+            title="More room, at the cost of half the remaining life">
+            Add capacity
+          </button>
+          {!b.managed && (
+            <span className="muted" style={{ fontSize: 12 }}>
+              unmanaged — nothing dilutes this automatically
+            </span>
+          )}
+        </div>
+        {room && <Dilute b={b} onDone={async () => { await onDone(); setRoom(false); }} />}
+      </div>
     </div>
   );
 }
