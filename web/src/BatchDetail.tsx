@@ -133,12 +133,16 @@ export function BatchDetail({ batchId, state, onChange }: {
 
         {err && <div className="warn err">{err}</div>}
 
+        {/* Identity first: what this batch IS, then how it is doing. The id and
+            the label are how you confirm you are on the right page at all, and
+            they were below a pair of meters that mean nothing until you have. */}
+        {batch && <BatchFacts b={batch} state={state!} onChange={onChange} />}
+
         {batch && (
           <Vitals b={batch} data={data} state={state!}
             onDone={async () => { await onChange(); await load(); }} />
         )}
 
-        {batch && <BatchFacts b={batch} state={state!} onChange={onChange} />}
         {batch?.managed && <Policy b={batch} state={state!} onChange={onChange} />}
 
         {!data && !err && <div className="card"><p className="muted">Reading 65,536 buckets…</p></div>}

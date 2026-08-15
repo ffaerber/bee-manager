@@ -45,6 +45,12 @@ A real URL, so it can be bookmarked, shared, or pinned on a wall display.
 └───────────────────────────────────────────────────────────────────────┘
 ```
 
+## Order of the page
+
+Identity, then health, then detail. The batch facts card comes first because
+the label and the id are how you confirm you are on the right page at all —
+a pair of meters means nothing until you know whose they are.
+
 ## Vitals — the two numbers that matter
 
 Life and room decide whether a batch is healthy: it dies when either runs out,
