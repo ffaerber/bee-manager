@@ -114,12 +114,24 @@ h2 { font-size: 14px; color: var(--text-secondary); letter-spacing: 0.02em; }
 .ambient {
   position: fixed; inset: 0; z-index: 0;
   width: 100vw; height: 100vh;
-  image-rendering: pixelated;
   pointer-events: none;
 }
 /* Interactive on the batch page: hovering the background reports the bucket
    under the cursor. Still behind the panel, which sits above it. */
 .ambient.is-interactive { pointer-events: auto; }
+
+/* The instrument: one crisp cell per bucket, nothing interpolated away. */
+.ambient.is-pixels { image-rendering: pixelated; }
+
+/* The wallpaper. Smooth upscaling plus a blur turns one pixel per bucket into
+   a star field, and the bloom makes brighter points read as larger without
+   drawing anything per-star. Black regardless of theme — it is a night sky,
+   not a surface. */
+.ambient.is-stars {
+  image-rendering: auto;
+  filter: blur(1.1px) saturate(0.6);
+  background: #000;
+}
 
 /* The panel rides above the map. Cards keep their opaque surface so text
    contrast is unaffected by whatever is painted behind them — the map shows

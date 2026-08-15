@@ -69,7 +69,32 @@ What actually bounds overspending is the caps, not this flag.
 
 `Add capacity` works on immutable batches too — see Dilute below.
 
-## The map
+## The map — two renderings
+
+The same buckets, drawn for two different jobs.
+
+**Panel view — a star field.** Black sky, monochrome points, softened, and
+inert. It sits behind something you are reading, so it is texture rather than
+data: no hover, no colour ramp, nothing competing for attention. Brightness
+follows how full each bucket is, and empty sky means empty buckets.
+
+Brightness is **logarithmic**, for the same reason stellar magnitude is. On the
+live depth-24 batch 9,971 buckets hold one chunk, 886 hold two and 56 hold
+three; a linear or mild-gamma curve renders that whole range 74–82 out of 255 —
+a flat grey haze. Logarithmically it spans 71–116 and the crowded regions
+actually read as brighter.
+
+It is drawn at one pixel per bucket and scaled up smoothly with a blur rather
+than as thousands of individual glows. Far cheaper — a dense batch would
+otherwise mean 65,536 radial gradients a frame — and truer to how a bright
+point looks, since the bloom makes brighter stars read as larger without
+drawing anything per star.
+
+**Map view — the instrument.** Press **Show map** and it becomes one crisp cell
+per bucket with the full colour ramp and a per-bucket readout on hover. That is
+the view for studying a batch; the legend appears with it.
+
+### Reading the instrument
 
 Each cell is one of the **65,536 buckets**. A chunk's address decides which
 bucket its stamp must occupy — you do not choose — so buckets fill unevenly and

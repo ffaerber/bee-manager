@@ -60,7 +60,7 @@ export function BatchDetail({ batchId, state, onChange }: {
   // Escape brings the panel back — on a device with no hover, hiding it would
   // otherwise be one-way.
   useEffect(() => {
-    if (!panelHidden) return;
+    if (!panelHidden) { setHover(null); return; }
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setPanelHidden(false); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -102,8 +102,19 @@ export function BatchDetail({ batchId, state, onChange }: {
 
   return (
     <>
-      <MapCanvas fills={fills} bucketUpperBound={data?.bucketUpperBound ?? 1} onHover={setHover} />
-      {hover && (
+      {/* Two renderings, chosen by whether the panel is up.
+          With the panel visible the map is wallpaper behind something you are
+          reading: a star field, black and monochrome, softened, and inert —
+          hovering a background you cannot really see reports numbers nobody
+          asked for. Press Show map and it becomes the instrument: one crisp
+          cell per bucket, the full colour ramp, and per-bucket readout. */}
+      <MapCanvas
+        fills={fills}
+        bucketUpperBound={data?.bucketUpperBound ?? 1}
+        mode={panelHidden ? 'pixels' : 'stars'}
+        onHover={panelHidden ? setHover : undefined}
+      />
+      {panelHidden && hover && (
         <div className="tooltip is-fixed" style={{ left: hover.x + 14, top: hover.y + 14 }}>
           bucket {hover.id.toLocaleString()}<br />
           {hover.count} / {data?.bucketUpperBound ?? '?'} stamps

@@ -17,9 +17,28 @@ import { fillColor, layoutFor, readPalette } from './mapColors';
 
 export interface Hover { x: number; y: number; id: number; count: number }
 
-export function MapCanvas({ fills, bucketUpperBound, onHover }: {
+/**
+ * Two renderings of the same buckets, for two different jobs.
+ *
+ *   pixels  the instrument. One cell per bucket, the full colour ramp, sharp
+ *           edges, hoverable. What you want when studying the batch.
+ *   stars   the wallpaper. Black sky, monochrome points, brightness by how
+ *           full the bucket is, softened. What you want behind a page you are
+ *           reading — legible as texture, not as data.
+ *
+ * The star field is drawn at one pixel per bucket and then scaled up SMOOTHLY
+ * with a blur, rather than as thousands of individual glows. That is both far
+ * cheaper — a dense batch would otherwise mean 65,536 radial gradients per
+ * frame — and more accurate to how a bright point actually looks: the bloom
+ * from blurring makes brighter stars read as larger, which is the effect
+ * asked for and the reason real photographs of stars behave that way.
+ */
+export type MapMode = 'pixels' | 'stars';
+
+export function MapCanvas({ fills, bucketUpperBound, mode, onHover }: {
   fills: Uint8Array | null;
   bucketUpperBound: number;
+  mode: MapMode;
   /** When given, the canvas becomes hoverable and reports the bucket under the cursor. */
   onHover?: (h: Hover | null) => void;
 }) {
@@ -38,9 +57,37 @@ export function MapCanvas({ fills, bucketUpperBound, onHover }: {
     el.width = cols;
     el.height = rows;
 
-    const p = readPalette();
     const img = ctx.createImageData(cols, rows);
     const total = cols * rows;
+
+    if (mode === 'stars') {
+      for (let i = 0; i < total; i++) {
+        const o = i * 4;
+        // Opaque black everywhere, including the padding cells: a night sky
+        // has no holes in it, and transparency would show the page through.
+        img.data[o] = 0; img.data[o + 1] = 0; img.data[o + 2] = 0; img.data[o + 3] = 255;
+        if (i >= fills.length) continue;
+        const f = fills[i];
+        if (f === 0) continue;
+
+        // Brightness is LOGARITHMIC in the bucket's fill, for the same reason
+        // stellar magnitude is: a linear or mild-gamma curve puts all the real
+        // data at one brightness. On the live depth-24 batch 9,971 buckets hold
+        // one chunk, 886 hold two, 56 hold three — under gamma 0.7 that whole
+        // range renders 74 to 82, indistinguishable. Logarithmically it spans
+        // 71 to 116, so the crowded parts of the sky actually read as brighter.
+        const t = Math.log1p(f) / Math.log1p(255);
+        const v = Math.round(45 + 210 * t);
+        // Very slightly cool, the way white points on black usually read.
+        img.data[o] = Math.round(v * 0.94);
+        img.data[o + 1] = Math.round(v * 0.97);
+        img.data[o + 2] = v;
+      }
+      ctx.putImageData(img, 0, 0);
+      return;
+    }
+
+    const p = readPalette();
     for (let i = 0; i < total; i++) {
       const o = i * 4;
       if (i >= fills.length) {
@@ -53,7 +100,7 @@ export function MapCanvas({ fills, bucketUpperBound, onHover }: {
       img.data[o] = r; img.data[o + 1] = g; img.data[o + 2] = b; img.data[o + 3] = 255;
     }
     ctx.putImageData(img, 0, 0);
-  }, [fills]);
+  }, [fills, mode]);
 
   useEffect(() => { draw(); }, [draw]);
 
@@ -89,7 +136,7 @@ export function MapCanvas({ fills, bucketUpperBound, onHover }: {
   return (
     <canvas
       ref={canvas}
-      className={`ambient${onHover ? ' is-interactive' : ''}`}
+      className={`ambient is-${mode}${onHover ? ' is-interactive' : ''}`}
       aria-hidden="true"
       onMouseMove={onMove}
       onMouseLeave={() => onHover?.(null)}
