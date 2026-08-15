@@ -16,7 +16,7 @@ import { useCallback, useEffect, useState } from 'react';
 import * as api from './api';
 import type { SettingSpec, SettingsResponse } from './api';
 import { link } from './router';
-import { fmtBytes, depthCapacity } from './format';
+import { fmtBytes, fmtDays, depthCapacity } from './format';
 import { RangeSlider } from './RangeSlider';
 
 const GROUPS: { id: SettingSpec['group']; title: string; blurb: string }[] = [
@@ -151,7 +151,7 @@ function Field({ s, busy, onSave }: {
     );
   }
 
-  if (s.kind === 'percent' || s.kind === 'depth') {
+  if (s.kind === 'percent' || s.kind === 'depth' || s.kind === 'days') {
     // Bounded values get a slider — the range is the context a number field
     // cannot give. Depth is labelled with the capacity it buys, because "22"
     // means nothing and "17.2 GB" means something.
@@ -162,8 +162,12 @@ function Field({ s, busy, onSave }: {
           value={Number(s.value ?? 0)}
           min={s.min ?? 0} max={s.max ?? 100}
           step={s.kind === 'percent' ? 5 : 1}
+          stops={s.stops}
           disabled={busy}
-          format={(v) => s.kind === 'percent' ? `${v}%` : `d${v} · ${depthCapacity(v)}`}
+          format={(v) =>
+            s.kind === 'percent' ? `${v}%`
+            : s.kind === 'days' ? fmtDays(v)
+            : `d${v} · ${depthCapacity(v)}`}
           onCommit={onSave}
         />
         {s.hint && <div className="tile-sub">{s.hint}</div>}

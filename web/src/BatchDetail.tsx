@@ -441,16 +441,23 @@ function Policy({ b, state, onChange }: {
     key: keyof typeof b.policy; label: string; unit: string; hint?: string;
     /** Stored as a fraction, entered and displayed as 0-100. */
     percent?: boolean;
-    /** Rendered as a slider labelled with the capacity each depth buys. */
-    kind?: 'depth';
+    /** Slider style: depth shows capacity, days shows a duration. */
+    kind?: 'depth' | 'days';
+    /** Discrete values a days slider snaps to. */
+    stops?: number[];
     globalValue: number; step?: string; min?: string; max?: string;
   }[] = [
-    { key: 'topupBelowDays', label: 'Top up when life falls below', unit: 'days',
-      globalValue: eff.topupWhenTtlBelowSec / 86_400, min: '1' },
+    // Capped just under the target, so the pair cannot be set to a combination
+    // the service would refuse — a target at or below the trigger re-fires and
+    // spends every cycle.
+    { key: 'topupBelowDays', label: 'Top up when life falls below', unit: 'days', kind: 'days',
+      hint: 'margin before renewal',
+      globalValue: below, min: '2', max: String(Math.max(2, target - 1)) },
     // "to", not "by". The distinction is the whole model and was invisible.
-    { key: 'topupTargetDays', label: 'Top up to', unit: 'days total',
+    { key: 'topupTargetDays', label: 'Top up to', unit: 'days total', kind: 'days',
       hint: 'a ceiling, not an amount added',
-      globalValue: eff.topupTargetTtlSec / 86_400, min: '2' },
+      stops: [14, 30, 45, 60, 90, 120, 180, 270, 365].filter((d) => d > below),
+      globalValue: target, min: String(Math.max(14, below + 1)), max: '365' },
     // Stored as a fraction, shown as a percentage. "0.9 of 1.0" is the same
     // number nobody reads as ninety percent without converting it first.
     { key: 'diluteAbove', label: 'Dilute when fullest bucket exceeds', unit: '%',
@@ -503,7 +510,7 @@ function Policy({ b, state, onChange }: {
         {fields.map((f) => (
           <div key={f.key}>
             <div className="tile-label">{f.label}</div>
-            {f.percent || f.kind === 'depth' ? (
+            {f.percent || f.kind ? (
               /* Sliders for the bounded values, because the range is context a
                  number field cannot give. A slider has no empty state, so it
                  shows what is in force and Reset clears the override. */
@@ -513,8 +520,12 @@ function Policy({ b, state, onChange }: {
                   : f.globalValue}
                 min={Number(f.min ?? 10)} max={Number(f.max ?? 100)}
                 step={f.percent ? 5 : 1}
+                stops={f.stops}
                 disabled={busy}
-                format={(v) => f.percent ? `${v}%` : `d${v} · ${depthCapacity(v)}`}
+                format={(v) =>
+                  f.percent ? `${v}%`
+                  : f.kind === 'days' ? fmtDays(v)
+                  : `d${v} · ${depthCapacity(v)}`}
                 onCommit={(v) => save(f.key, String(v), f.percent === true)}
               />
             ) : (

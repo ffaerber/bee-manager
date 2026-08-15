@@ -162,3 +162,51 @@ describe('percent settings', () => {
     expect(out.diluteWhenUtilizationAbove).toBe(0.75);
   });
 });
+
+/**
+ * The two duration settings, as sliders.
+ *
+ * The trigger is continuous — any margin between two days and a month is
+ * reasonable. The target snaps, because the durations worth choosing are a
+ * month, a quarter, half a year, a year; a continuous slider makes those exact
+ * values fiddly to land on and every position between them meaningless.
+ */
+describe('duration settings', () => {
+  const trigger = EDITABLE.find((s) => s.key === 'topupWhenTtlBelowDays')!;
+  const target = EDITABLE.find((s) => s.key === 'topupTargetTtlDays')!;
+
+  it('bounds the trigger to a workable margin', () => {
+    expect(trigger.kind).toBe('days');
+    expect(trigger.min).toBe(2);
+    expect(trigger.max).toBe(30);
+    expect(trigger.stops).toBeUndefined();
+  });
+
+  it('snaps the target to meaningful durations', () => {
+    expect(target.kind).toBe('days');
+    expect(target.stops).toEqual([14, 30, 45, 60, 90, 120, 180, 270, 365]);
+  });
+
+  it('every stop clears the highest possible trigger', () => {
+    // Otherwise a valid-looking pair would be rejected by the coherence rule.
+    for (const stop of target.stops!) {
+      if (stop <= trigger.max!) continue;
+      expect(stop).toBeGreaterThan(trigger.min!);
+    }
+    // The lowest stop must at least exceed the lowest trigger.
+    expect(Math.min(...target.stops!)).toBeGreaterThan(trigger.min!);
+  });
+
+  it('the live pair is representable on both sliders', () => {
+    // 2 and 60 as deployed: the trigger sits at its minimum, the target on a stop.
+    expect(2).toBeGreaterThanOrEqual(trigger.min!);
+    expect(2).toBeLessThanOrEqual(trigger.max!);
+    expect(target.stops).toContain(60);
+  });
+
+  it('still refuses a target at or below the trigger', () => {
+    const out = applySettings(cfg, { topupWhenTtlBelowDays: '30', topupTargetTtlDays: '14' });
+    expect(out.topupTargetTtlSec / 86_400).toBe(60);
+    expect(out.topupWhenTtlBelowSec / 86_400).toBe(2);
+  });
+});

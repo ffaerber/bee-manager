@@ -40,7 +40,7 @@ interface Spec {
    * actually is) but shown and entered as 0–100. Nobody reads "0.9 of 1.0" as
    * ninety percent without translating it first.
    */
-  kind: 'bool' | 'int' | 'float' | 'percent' | 'depth' | 'bzz' | 'string';
+  kind: 'bool' | 'int' | 'float' | 'percent' | 'depth' | 'days' | 'bzz' | 'string';
   /** Direction that weakens this guard, or null when it guards nothing. */
   looserWhen: Guard;
   /** Human label for the dashboard. */
@@ -50,6 +50,8 @@ interface Spec {
   risk?: string;
   min?: number;
   max?: number;
+  /** Discrete values a `days` slider snaps to. */
+  stops?: number[];
   group: 'automation' | 'thresholds' | 'limits' | 'alerts' | 'sharing';
 }
 
@@ -67,10 +69,16 @@ export const EDITABLE: Spec[] = [
   { group: 'automation', key: 'diluteEnabled', kind: 'bool', looserWhen: null,
     label: 'Auto dilute', hint: 'add capacity when a bucket nears full' },
 
-  { group: 'thresholds', key: 'topupWhenTtlBelowDays', kind: 'int', looserWhen: null,
-    min: 1, max: 3650, label: 'Top up when life falls below', hint: 'days' },
-  { group: 'thresholds', key: 'topupTargetTtlDays', kind: 'int', looserWhen: null,
-    min: 2, max: 3650, label: 'Top up to', hint: 'days — the size of each top-up' },
+  // Both are durations with a sensible working range, so both are sliders.
+  // The trigger is continuous: any day between two and a month is a reasonable
+  // margin. The target snaps, because the settings worth choosing are a month,
+  // a quarter, half a year, a year — not 187 days.
+  { group: 'thresholds', key: 'topupWhenTtlBelowDays', kind: 'days', looserWhen: null,
+    min: 2, max: 30, label: 'Top up when life falls below',
+    hint: 'days of margin before it is renewed' },
+  { group: 'thresholds', key: 'topupTargetTtlDays', kind: 'days', looserWhen: null,
+    min: 14, max: 365, stops: [14, 30, 45, 60, 90, 120, 180, 270, 365],
+    label: 'Top up to', hint: 'total days, not days added' },
   { group: 'thresholds', key: 'diluteWhenUtilizationAbove', kind: 'percent', looserWhen: null,
     min: 10, max: 100, label: 'Dilute when fullest bucket exceeds', hint: 'percent full' },
 

@@ -152,11 +152,11 @@ export const uploadToBatch = (id: string, file: File) =>
   );
 /** One runtime setting, with its environment value and any override. */
 export interface SettingSpec {
-  key: string; kind: 'bool' | 'int' | 'float' | 'percent' | 'depth' | 'bzz' | 'string';
+  key: string; kind: 'bool' | 'int' | 'float' | 'percent' | 'depth' | 'days' | 'bzz' | 'string';
   group: 'automation' | 'thresholds' | 'limits' | 'alerts' | 'sharing';
   /** Direction that weakens this guard, or null when it guards nothing. */
   looserWhen: 'higher' | 'lower' | null;
-  label: string; hint?: string; risk?: string; min?: number; max?: number;
+  label: string; hint?: string; risk?: string; min?: number; max?: number; stops?: number[];
   /** The value in force. There is only one — the database is authoritative. */
   value: string | number | boolean | null;
 }
