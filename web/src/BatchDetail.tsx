@@ -229,8 +229,10 @@ export function BatchDetail({ batchId, state, onChange }: {
                 <div className="row" style={{ marginTop: 8, gap: 8 }}>
                   <CopyLink url={shareUrl(data.publicGatewayUrl, uploaded.reference)}
                     label="Copy download link" />
-                  <a className="backlink" target="_blank" rel="noopener noreferrer"
-                    href={shareUrl(data.publicGatewayUrl, uploaded.reference)}>open ↗</a>
+                  {shareUrl(data.publicGatewayUrl, uploaded.reference) && (
+                    <a className="backlink" target="_blank" rel="noopener noreferrer"
+                      href={shareUrl(data.publicGatewayUrl, uploaded.reference)!}>open ↗</a>
+                  )}
                   <span className="muted" style={{ fontSize: 12 }}>
                     Anyone with this link can fetch the file — it needs no key.
                   </span>
@@ -821,13 +823,19 @@ function Dilute({ b, onDone }: { b: Batch; onDone: () => Promise<void> }) {
  * app and answers 200 with an HTML page, so a link built from it looks correct
  * and downloads nothing; download.gateway.ethswarm.org serves the bytes.
  */
-function shareUrl(gateway: string, reference: string): string {
+function shareUrl(gateway: string | undefined, reference: string): string | null {
+  // Returns null rather than building from `undefined`. TypeScript types this
+  // as a string and cannot see whether the server actually sent it — the field
+  // was briefly served from the wrong endpoint, which would have produced
+  // "undefined/bzz/<ref>/" and copied cleanly to the clipboard.
+  if (!gateway) return null;
   return `${gateway.replace(/\/+$/, '')}/bzz/${reference}/`;
 }
 
 /** Copy a shareable link, and say so — a silent clipboard write looks broken. */
-function CopyLink({ url, label = 'Copy link' }: { url: string; label?: string }) {
+function CopyLink({ url, label = 'Copy link' }: { url: string | null; label?: string }) {
   const [copied, setCopied] = useState(false);
+  if (!url) return null;
   return (
     <button
       style={{ padding: '4px 10px', fontSize: 12 }}

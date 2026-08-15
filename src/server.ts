@@ -194,8 +194,6 @@ export function createServer(deps: ServerDeps) {
               pollIntervalMs: cfg.pollIntervalMs,
               dbPath: cfg.dbPath,
               maxUploadBytes: cfg.maxUploadBytes,
-              /** Base for shareable links, so the page need not hardcode one. */
-              publicGatewayUrl: applySettings(cfg, db.settings()).publicGatewayUrl,
             },
           });
         })
@@ -579,6 +577,8 @@ export function createServer(deps: ServerDeps) {
                * fullest-bucket figure is for.
                */
               freeChunks: Math.max(0, Math.pow(2, grid.depth) - grid.totalChunks),
+              /** Base for shareable download links, so the page need not hardcode one. */
+              publicGatewayUrl: applySettings(cfg, db.settings()).publicGatewayUrl,
             });
           } catch (e: any) {
             set.status = e?.status === 404 ? 404 : 502;
