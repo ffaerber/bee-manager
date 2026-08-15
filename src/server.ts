@@ -194,6 +194,8 @@ export function createServer(deps: ServerDeps) {
               pollIntervalMs: cfg.pollIntervalMs,
               dbPath: cfg.dbPath,
               maxUploadBytes: cfg.maxUploadBytes,
+              /** Base for shareable links, so the page need not hardcode one. */
+              publicGatewayUrl: applySettings(cfg, db.settings()).publicGatewayUrl,
             },
           });
         })

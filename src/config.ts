@@ -69,6 +69,7 @@ export interface Config {
   unmanagedLabelPrefix: string;
 
   webhookUrl: string | null;
+  publicGatewayUrl: string;
   alertCooldownMs: number;
   walletLowRunwayDays: number;
 }
@@ -125,6 +126,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       unmanagedLabelPrefix: str('UNMANAGED_LABEL_PREFIX', 'tmp-'),
 
       webhookUrl: str('WEBHOOK_URL', '') || null,
+      /**
+       * Base for shareable links. Note this is NOT gateway.ethswarm.org: that
+       * host serves the gateway's own web app for /bzz/<ref> and returns 200
+       * with an HTML page, so a link built from it looks fine and downloads
+       * nothing. download.gateway.ethswarm.org serves the bytes, and needs a
+       * trailing slash or it 308s to add one.
+       */
+      publicGatewayUrl: str('PUBLIC_GATEWAY_URL', 'https://download.gateway.ethswarm.org').replace(/\/+$/, ''),
       alertCooldownMs: int('ALERT_COOLDOWN_MS', 6 * 3_600_000, 0),
       walletLowRunwayDays: int('WALLET_LOW_RUNWAY_DAYS', 30, 1),
     };

@@ -45,7 +45,7 @@ interface Spec {
   risk?: string;
   min?: number;
   max?: number;
-  group: 'automation' | 'thresholds' | 'limits' | 'alerts';
+  group: 'automation' | 'thresholds' | 'limits' | 'alerts' | 'sharing';
 }
 
 /**
@@ -89,6 +89,9 @@ export const EDITABLE: Spec[] = [
     min: 1, max: 3650, label: 'Warn when runway below', hint: 'days' },
   { group: 'alerts', key: 'webhookUrl', kind: 'string', looserWhen: null,
     label: 'Webhook URL', hint: 'where alerts are POSTed — unset means nothing is announced' },
+
+  { group: 'sharing', key: 'publicGatewayUrl', kind: 'string', looserWhen: null,
+    label: 'Public gateway', hint: 'base URL used to build shareable download links' },
 ];
 
 const BY_KEY = new Map(EDITABLE.map((s) => [s.key, s]));
@@ -109,6 +112,7 @@ export function envValue(cfg: Config, key: string): string | number | boolean | 
     case 'minWalletXdai': return Number(cfg.minWalletXdaiWei) / 1e18;
     case 'walletLowRunwayDays': return cfg.walletLowRunwayDays;
     case 'webhookUrl': return cfg.webhookUrl;
+    case 'publicGatewayUrl': return cfg.publicGatewayUrl;
     default: return null;
   }
 }
@@ -171,6 +175,7 @@ export function applySettings(cfg: Config, stored: Record<string, string>): Conf
 
     if (spec.kind === 'string') {
       if (spec.key === 'webhookUrl') out.webhookUrl = raw.trim() || null;
+      if (spec.key === 'publicGatewayUrl') out.publicGatewayUrl = raw.trim().replace(/\/+$/, '');
       continue;
     }
 

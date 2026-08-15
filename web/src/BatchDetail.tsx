@@ -226,6 +226,15 @@ export function BatchDetail({ batchId, state, onChange }: {
                 {uploaded.newChunks === 1 ? '' : 's'}.
                 <br />
                 <code style={{ fontSize: 11, wordBreak: 'break-all' }}>{uploaded.reference}</code>
+                <div className="row" style={{ marginTop: 8, gap: 8 }}>
+                  <CopyLink url={shareUrl(data.publicGatewayUrl, uploaded.reference)}
+                    label="Copy download link" />
+                  <a className="backlink" target="_blank" rel="noopener noreferrer"
+                    href={shareUrl(data.publicGatewayUrl, uploaded.reference)}>open ↗</a>
+                  <span className="muted" style={{ fontSize: 12 }}>
+                    Anyone with this link can fetch the file — it needs no key.
+                  </span>
+                </div>
               </div>
             )}
 
@@ -237,7 +246,7 @@ export function BatchDetail({ batchId, state, onChange }: {
                       <tr><th>File</th><th className="num">Size</th><th>When</th><th>Reference</th><th></th></tr>
                     </thead>
                     <tbody>
-                      {uploads.map((u) => <UploadRow key={u.id} u={u} />)}
+                      {uploads.map((u) => <UploadRow key={u.id} u={u} gateway={data.publicGatewayUrl} />)}
                     </tbody>
                   </table>
                 </div>
@@ -802,6 +811,42 @@ function Dilute({ b, onDone }: { b: Batch; onDone: () => Promise<void> }) {
 }
 
 /**
+ * The public download URL for a reference.
+ *
+ * The trailing slash is not cosmetic: without it the gateway answers 308 to add
+ * one, which some tools follow and some do not. Including it means the link
+ * works wherever it is pasted.
+ *
+ * Note the host. gateway.ethswarm.org/bzz/<ref> serves the gateway's own web
+ * app and answers 200 with an HTML page, so a link built from it looks correct
+ * and downloads nothing; download.gateway.ethswarm.org serves the bytes.
+ */
+function shareUrl(gateway: string, reference: string): string {
+  return `${gateway.replace(/\/+$/, '')}/bzz/${reference}/`;
+}
+
+/** Copy a shareable link, and say so — a silent clipboard write looks broken. */
+function CopyLink({ url, label = 'Copy link' }: { url: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      style={{ padding: '4px 10px', fontSize: 12 }}
+      title={url}
+      onClick={() => {
+        navigator.clipboard?.writeText(url).then(() => {
+          setCopied(true); setTimeout(() => setCopied(false), 1800);
+        }).catch(() => {
+          // Clipboard is blocked without a secure context or permission. The
+          // title attribute still carries the URL, so it stays retrievable.
+          window.prompt('Copy this link', url);
+        });
+      }}>
+      {copied ? 'copied ✓' : label}
+    </button>
+  );
+}
+
+/**
  * One stored upload.
  *
  * View and Download both pull through the authenticated content proxy — the
@@ -809,7 +854,7 @@ function Dilute({ b, onDone }: { b: Batch; onDone: () => Promise<void> }) {
  * Object URLs are revoked once handed over so a long session does not retain
  * every file it has looked at.
  */
-function UploadRow({ u }: { u: Upload }) {
+function UploadRow({ u, gateway }: { u: Upload; gateway: string }) {
   const [busy, setBusy] = useState<'view' | 'download' | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -861,6 +906,7 @@ function UploadRow({ u }: { u: Upload }) {
             disabled={busy !== null} onClick={() => open('download')}>
             {busy === 'download' ? '…' : 'download'}
           </button>
+          <CopyLink url={shareUrl(gateway, u.reference)} />
         </div>
       </td>
     </tr>

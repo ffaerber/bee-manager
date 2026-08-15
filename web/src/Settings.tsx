@@ -27,6 +27,8 @@ const GROUPS: { id: SettingSpec['group']; title: string; blurb: string }[] = [
     blurb: 'What bounds a mistake. These are the last thing between a wrong number and the wallet.' },
   { id: 'alerts', title: 'Alerts',
     blurb: 'Where problems are announced. Without a webhook, nothing reaches you unprompted.' },
+  { id: 'sharing', title: 'Sharing',
+    blurb: 'Used to build the download links you copy from a batch page. Anyone with a link can fetch the file.' },
 ];
 
 export function Settings() {

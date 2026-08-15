@@ -171,6 +171,27 @@ container. Checked in the browser before transferring.
 | File / Size / When | as recorded at upload |
 | Reference | click to copy |
 | view / download | fetched through the authenticated content proxy |
+| Copy link | a **public** gateway URL — anyone who has it can fetch the file, no key needed |
+
+A freshly uploaded file offers the same link immediately, which is when you
+actually want to send it.
+
+### The link
+
+`https://download.gateway.ethswarm.org/bzz/<reference>/`, with the gateway base
+configurable at `/settings` so a private or self-hosted one can be used instead.
+
+Two details are load-bearing and neither is obvious:
+
+- **The host.** `gateway.ethswarm.org/bzz/<ref>` serves the gateway's own web
+  app and answers **200 with an HTML page** — a link built from it looks
+  correct, returns 200, and downloads nothing. `download.gateway.ethswarm.org`
+  serves the bytes.
+- **The trailing slash.** Without it the gateway answers 308 to add one, and
+  not every client follows that.
+
+Verified against a real upload: 326,163 bytes, `image/png`, byte-identical to
+the file sent.
 
 Swarm **cannot list a batch's contents**. This is a local index of what this
 dashboard uploaded — a reference not recorded here is unreachable, even though

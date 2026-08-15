@@ -88,6 +88,8 @@ export interface BucketGrid {
   maxCollisions: number; storedBytes: number; capacityBytes: number;
   /** Chunks before the first bucket fills — where behaviour changes. */
   firstFullChunks: number;
+  /** Base for public download links, from settings. */
+  publicGatewayUrl: string;
   /** Server's upload ceiling, so the browser can refuse before transferring. */
   maxUploadBytes: number;
   /** Chunk slots free batch-wide — an upper bound; buckets bind tighter. */
@@ -151,7 +153,7 @@ export const uploadToBatch = (id: string, file: File) =>
 /** One runtime setting, with its environment value and any override. */
 export interface SettingSpec {
   key: string; kind: 'bool' | 'int' | 'float' | 'bzz' | 'string';
-  group: 'automation' | 'thresholds' | 'limits' | 'alerts';
+  group: 'automation' | 'thresholds' | 'limits' | 'alerts' | 'sharing';
   /** Direction that weakens this guard, or null when it guards nothing. */
   looserWhen: 'higher' | 'lower' | null;
   label: string; hint?: string; risk?: string; min?: number; max?: number;
