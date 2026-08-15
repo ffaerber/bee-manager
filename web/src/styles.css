@@ -57,6 +57,9 @@
   --series-1: #ff6a4d;
 
   /* Sequential ramp for the bucket map, dim to bright. */
+  /* Opaque, because the map canvas composites nothing — an empty bucket has
+     to be a real colour, not a translucent border token. */
+  --map-empty: #171821;
   --map-low: #256abf;
   --map-mid: #6da7ec;
   --map-high: #cde2fb;

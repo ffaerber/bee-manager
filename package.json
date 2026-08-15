@@ -7,7 +7,7 @@
     "start": "bun src/index.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit && cd web && tsc --noEmit",
-    "build:web": "cd web && vite build"
+    "build:web": "cd web && bun run build"
   },
   "dependencies": {
     "elysia": "^1.2.25",

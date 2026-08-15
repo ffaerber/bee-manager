@@ -287,7 +287,7 @@ export function BatchDetail({ batchId, state, onChange }: {
               not visible — a key to a picture you cannot see. Identity is never
               colour alone, so every swatch stays labelled. */}
           <div className="map-legend">
-            <Key color="var(--grid)" label="empty" />
+            <Key color="var(--map-empty)" label="empty" />
             <Key color="var(--map-low)" label="lightly used" />
             <Key color="var(--map-mid)" label="half full" />
             <Key color="var(--map-high)" label="mostly full" />

@@ -21,10 +21,44 @@ export type RGB = [number, number, number];
 /** Encoded fill at which a bucket counts as "nearly full": 80% of the 1..254 range. */
 export const NEAR_FULL_BYTE = Math.round(0.8 * 254);
 
-function hex(c: string): RGB {
-  const m = c.trim().replace('#', '');
+/** The page background, for compositing any translucent colour onto. */
+const PAGE: RGB = [5, 6, 12];
+
+/**
+ * Parse a CSS colour into opaque RGB.
+ *
+ * Handles `#rgb`, `#rrggbb`, `rgb()` and `rgba()`, and composites alpha over
+ * the page background — the canvas is opaque, so a translucent token has to be
+ * resolved to what it actually looks like.
+ *
+ * It used to accept hex only. When the theme changed `--grid` to
+ * `rgba(232,231,238,0.14)`, `parseInt("rg", 16)` gave NaN for red and blue
+ * while the middle two characters happened to parse as 186 — so every empty
+ * bucket rendered rgb(0,186,0) and the entire map turned bright green. A
+ * silent NaN is the worst possible failure here, so an unparseable value now
+ * falls back to a stated default rather than producing a colour by accident.
+ */
+export function parseColor(c: string, fallback: RGB): RGB {
+  const t = c.trim();
+
+  const rgb = /^rgba?\(([^)]+)\)$/i.exec(t);
+  if (rgb) {
+    const parts = rgb[1].split(/[\s,/]+/).filter(Boolean).map(Number);
+    const [r, g, b] = parts;
+    if (![r, g, b].every(Number.isFinite)) return fallback;
+    const a = parts.length > 3 && Number.isFinite(parts[3]) ? parts[3] : 1;
+    return [
+      Math.round(r * a + PAGE[0] * (1 - a)),
+      Math.round(g * a + PAGE[1] * (1 - a)),
+      Math.round(b * a + PAGE[2] * (1 - a)),
+    ];
+  }
+
+  const m = t.replace('#', '');
   const v = m.length === 3 ? m.split('').map((x) => x + x).join('') : m;
-  return [parseInt(v.slice(0, 2), 16), parseInt(v.slice(2, 4), 16), parseInt(v.slice(4, 6), 16)];
+  if (!/^[0-9a-f]{6}$/i.test(v)) return fallback;
+  const out: RGB = [parseInt(v.slice(0, 2), 16), parseInt(v.slice(2, 4), 16), parseInt(v.slice(4, 6), 16)];
+  return out.every(Number.isFinite) ? out : fallback;
 }
 
 const lerp = (a: number, b: number, t: number) => Math.round(a + (b - a) * t);
@@ -33,15 +67,20 @@ function cssVar(el: Element, name: string, fallback: string): string {
   return getComputedStyle(el).getPropertyValue(name).trim() || fallback;
 }
 
+const readColor = (el: Element, name: string, fallback: RGB, raw: string): RGB =>
+  parseColor(cssVar(el, name, raw), fallback);
+
 /** Read the ramp from CSS custom properties so both views track the theme. */
 export function readPalette(root: Element = document.documentElement): Palette {
   return {
-    low: hex(cssVar(root, '--map-low', '#b7d3f6')),
-    mid: hex(cssVar(root, '--map-mid', '#3987e5')),
-    high: hex(cssVar(root, '--map-high', '#184f95')),
-    near: hex(cssVar(root, '--warning', '#fab219')),
-    full: hex(cssVar(root, '--critical', '#d03b3b')),
-    empty: hex(cssVar(root, '--grid', '#e1e0d9')),
+    low: readColor(root, '--map-low', [37, 106, 191], '#256abf'),
+    mid: readColor(root, '--map-mid', [109, 167, 236], '#6da7ec'),
+    high: readColor(root, '--map-high', [205, 226, 251], '#cde2fb'),
+    near: readColor(root, '--warning', [250, 178, 25], '#fab219'),
+    full: readColor(root, '--critical', [236, 48, 19], '#ec3013'),
+    // Its own token, opaque. Reusing --grid meant the map's "empty" was a
+    // translucent border colour that had to be composited to mean anything.
+    empty: readColor(root, '--map-empty', [23, 24, 33], '#171821'),
   };
 }
 
