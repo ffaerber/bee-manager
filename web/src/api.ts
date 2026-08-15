@@ -48,7 +48,13 @@ export interface BatchPolicy {
 }
 export interface State {
   ok: boolean; error: string | null; msPerBlock: number;
-  burnPer30DaysBzz: number; runwayDays: number;
+  burnPer30DaysBzz: number;
+  /** Wallet / burn — what is left to fund future top-ups. Flat between spends. */
+  runwayDays: number;
+  /** (Wallet + committed batch value) / burn. The one that truly counts down. */
+  totalRunwayDays: number;
+  /** Value paid into the batches and not yet consumed, in xBZZ. */
+  committedBzz: number;
   wallet?: {
     bzz: number; xdai: number; address: string;
     chainId: number; chequebookAddress: string;

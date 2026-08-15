@@ -12,7 +12,7 @@ import { BeeClient, BeeIndeterminateError, type Batch, type ChainState, type Nod
 import { Db } from './db';
 import { applySettings } from './settings';
 import { Alerter } from './alerts';
-import { evaluateAll, findDisappeared, totalBurnPer30Days, type EvalContext, type Plan } from './evaluate';
+import { evaluateAll, findDisappeared, totalBurnPer30Days, totalCommitted, type EvalContext, type Plan } from './evaluate';
 import { plurToBzz, runwaySeconds, GNOSIS_MS_PER_BLOCK } from './math';
 import type { Config } from './config';
 
@@ -34,7 +34,17 @@ export interface PollResult {
   plans: Plan[];
   msPerBlock: number;
   burnPer30DaysBzz: number;
+  /** Wallet / burn. Flat between top-ups; this is what the low-wallet alert uses. */
   runwayDays: number;
+  /**
+   * (Wallet + value already committed to batches) / burn.
+   *
+   * The only runway that truly counts down: the committed part drains every
+   * block at exactly the burn rate, so this falls at one second per second.
+   */
+  totalRunwayDays: number;
+  /** Value paid into the batches and not yet consumed, in xBZZ. */
+  committedBzz: number;
   error?: string;
 }
 
@@ -145,7 +155,7 @@ export class Poller {
     } catch (e: any) {
       const msg = e?.message ?? String(e);
       await this.alerter.send({ event: 'node_unreachable', level: 'error', message: `Bee unreachable: ${msg}` });
-      this.last = { ok: false, batches: [], plans: [], msPerBlock: this.msPerBlock, burnPer30DaysBzz: 0, runwayDays: 0, error: msg };
+      this.last = { ok: false, batches: [], plans: [], msPerBlock: this.msPerBlock, burnPer30DaysBzz: 0, runwayDays: 0, totalRunwayDays: 0, committedBzz: 0, error: msg };
       return this.last;
     }
 
@@ -188,7 +198,13 @@ export class Poller {
     const managedBatches = batches.filter((b) => !unmanaged.has(b.batchID));
 
     const burn = totalBurnPer30Days(batches, chain.currentPrice, this.msPerBlock);
+    // Wallet-only: what is left to FUND future top-ups. Flat between spends,
+    // and the figure the low-wallet alert is defined against.
     const runwayDays = runwaySeconds(wallet.bzzBalance, burn) / 86_400;
+    // Wallet plus what the batches are already paid up for. This is the one
+    // that genuinely ticks down, because the committed half drains each block.
+    const committed = totalCommitted(batches);
+    const totalRunwayDays = runwaySeconds(wallet.bzzBalance + committed, burn) / 86_400;
 
     if (runwayDays < cfg.walletLowRunwayDays) {
       await this.alerter.send({
@@ -227,6 +243,8 @@ export class Poller {
       msPerBlock: this.msPerBlock,
       burnPer30DaysBzz: plurToBzz(burn),
       runwayDays,
+      totalRunwayDays,
+      committedBzz: plurToBzz(committed),
     };
     this.db.pruneSnapshots(90, now);
     return this.last;

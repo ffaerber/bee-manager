@@ -225,3 +225,25 @@ export function totalBurnPer30Days(batches: Batch[], price: bigint, msPerBlock?:
   }
   return total;
 }
+
+/**
+ * Value already paid into the batches but not yet consumed, in PLUR.
+ *
+ * `amount` is the remaining balance PER CHUNK, so a batch's committed value is
+ * that times its chunk count — the same shape as the burn above, which is why
+ * the two are directly comparable.
+ *
+ * This is the only part of the node's holdings that moves continuously: it
+ * drains every block, at exactly the burn rate, and that is precisely what
+ * batchTTL measures. The wallet by contrast is flat between top-ups. So
+ * (wallet + committed) / burn is the one runway figure that genuinely
+ * decreases at one second per second rather than sitting still and then
+ * stepping down when a top-up fires.
+ */
+export function totalCommitted(batches: Batch[]): bigint {
+  let total = 0n;
+  for (const b of batches) {
+    if (b.batchTTL > 0) total += costPlur(b.amount, b.depth);
+  }
+  return total;
+}

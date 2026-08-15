@@ -7,7 +7,8 @@
  * The point it exists to make: xBZZ lives in three places and only one of them
  * can buy postage.
  *
- *   wallet      spendable — this is what runway is computed from
+ *   wallet      spendable — this is what the WALLET runway is computed from
+ *               (the hero's total runway adds the batches' prepaid value)
  *   chequebook  bandwidth settlement with other nodes
  *   stake       locked in the storage incentives contract
  *

@@ -131,6 +131,8 @@ export function createServer(deps: ServerDeps) {
             msPerBlock: r.msPerBlock,
             burnPer30DaysBzz: r.burnPer30DaysBzz,
             runwayDays: r.runwayDays,
+            totalRunwayDays: r.totalRunwayDays,
+            committedBzz: r.committedBzz,
             wallet: r.wallet && {
               bzz: plurToBzz(r.wallet.bzzBalance),
               xdai: Number(r.wallet.nativeTokenBalance) / 1e18,

@@ -121,7 +121,12 @@ export default function App() {
 /** Hero + stat tiles. Runway is the hero because it is the number that
  *  actually explains why stamps lapse. Exactly one hero per view. */
 function Overview({ state }: { state: State }) {
-  const runway = state.runwayDays;
+  // The HERO is the total runway: wallet plus what the batches are already
+  // paid up for. It is the only one that genuinely counts down — the committed
+  // half drains every block at exactly the burn rate, so it falls at one
+  // second per second. Wallet-over-burn is flat between top-ups and would make
+  // any ticking clock a fiction, which is why it sits in a tile instead.
+  const runway = state.totalRunwayDays;
   const sev = runway < 30 ? 'critical' : runway < 90 ? 'warning' : 'good';
   /**
    * Fiat sub-line, e.g. "≈ $8.27". No period suffix: the tile's label already
@@ -135,7 +140,7 @@ function Overview({ state }: { state: State }) {
     <div className="card">
       <div className="spread" style={{ alignItems: 'flex-end', marginBottom: 16 }}>
         <div>
-          <div className="hero-label">Runway at the current burn rate</div>
+          <div className="hero-label">Runway until everything lapses</div>
           <Runway days={runway} sev={sev} />
           <div className={`status ${sev}`} style={{ marginTop: 14 }}>
             {sev === 'good' ? 'comfortable' : sev === 'warning' ? 'under three months' : 'under a month'}
@@ -147,8 +152,16 @@ function Overview({ state }: { state: State }) {
             two places to read the same number and disagree about it. */}
         {/* "per 30 days", not "per month": the figure is literally a 30-day
             rate, and a calendar month averages 30.44 days. */}
+        {/* Wallet-only runway. Kept on screen because it answers a different
+            question from the hero — not "how long until things lapse" but
+            "how long can I keep paying to stop them" — and because it is the
+            figure the low-wallet alert is defined against. */}
+        <Tile label="Wallet runway" value={isFinite(state.runwayDays) ? Math.round(state.runwayDays).toLocaleString() : '∞'}
+          unit="d" sub="funds future top-ups" />
         <Tile label="Burn rate per 30 days" value={state.burnPer30DaysBzz.toFixed(2)} unit={TOKEN}
           fiat={fiat(state.burnPer30DaysBzz)} />
+        <Tile label="Prepaid in batches" value={state.committedBzz.toFixed(2)} unit={TOKEN}
+          fiat={fiat(state.committedBzz)} />
         <Tile label="Batches" value={String(state.batches.length)}
           sub={`${state.batches.filter((b) => b.managed).length} managed`} />
         <Tile label="Node" value={state.node?.peers != null ? String(state.node.peers) : '—'}
@@ -194,7 +207,7 @@ function Runway({ days, sev }: { days: number; sev: string }) {
   const { days: d, clock, done } = countdown(anchor.days * 86_400_000 - (Date.now() - anchor.at));
   return (
     <div className={`hero-value ${sev}`}
-      title="Wallet divided by the current burn rate, counting down from the last poll. An estimate: it moves whenever a batch is topped up or the chain price changes.">
+      title="Wallet plus the value already paid into the batches, divided by the burn rate. The committed part drains every block, so this falls at one second per second. It jumps up when you deposit or buy, and moves if the chain price changes.">
       {done ? '0' : d.toLocaleString()}
       <span className="hero-unit">d</span>
       <span className="hero-clock">{clock}</span>
