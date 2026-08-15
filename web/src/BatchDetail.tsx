@@ -601,10 +601,11 @@ function Vitals({ b, data, state, onDone }: {
     : b.utilizationRatio >= b.effective.diluteWhenUtilizationAbove ? 'warning' : 'good';
 
   return (
-    <div className="vitals-pair">
-      {/* ── time ─────────────────────────────────────────────────────── */}
-      <div className="card">
-        <div className="tile-label">Remaining life</div>
+    <div className="card">
+      <div className="vitals">
+        {/* ── time ───────────────────────────────────────────────────── */}
+        <div>
+          <div className="tile-label">Remaining life</div>
         <div className="row" style={{ gap: 10, flexWrap: 'nowrap', margin: '4px 0' }}>
           <span className={`meter ${sev}`} style={{ flex: 1, height: 12 }}>
             <i style={{ width: `${ttlPct}%` }} />
@@ -620,8 +621,8 @@ function Vitals({ b, data, state, onDone }: {
 
         <div className="row" style={{ marginTop: 14 }}>
           <button className={life ? '' : 'primary'} onClick={() => setLife(!life)}
-            title="Buy more time at the current size">
-            Extend life
+            title="Buy more remaining life at the current depth">
+            Top up
           </button>
           {!b.managed && (
             <span className="muted" style={{ fontSize: 12 }}>
@@ -630,10 +631,10 @@ function Vitals({ b, data, state, onDone }: {
           )}
         </div>
         {life && <Topup b={b} onDone={async () => { await onDone(); setLife(false); }} />}
-      </div>
+        </div>
 
-      {/* ── room ─────────────────────────────────────────────────────── */}
-      <div className="card">
+        {/* ── room ───────────────────────────────────────────────────── */}
+        <div>
         {/* The same percentage means opposite things. On an immutable batch it
             is a countdown to refusing every upload; on a mutable one it is how
             close the first bucket is to recycling, after which the batch keeps
@@ -666,8 +667,8 @@ function Vitals({ b, data, state, onDone }: {
 
         <div className="row" style={{ marginTop: 14 }}>
           <button className={room ? '' : 'primary'} onClick={() => setRoom(!room)}
-            title="More room, at the cost of half the remaining life">
-            Add capacity
+            title="Raise the depth: more room, at the cost of half the remaining life">
+            Dilute
           </button>
           {!b.managed && (
             <span className="muted" style={{ fontSize: 12 }}>
@@ -676,6 +677,7 @@ function Vitals({ b, data, state, onDone }: {
           )}
         </div>
         {room && <Dilute b={b} onDone={async () => { await onDone(); setRoom(false); }} />}
+        </div>
       </div>
     </div>
   );

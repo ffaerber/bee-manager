@@ -289,15 +289,18 @@ tr:hover .rowlink { text-decoration: underline; }
 }
 .reflink:hover { color: var(--text-primary); border-color: var(--baseline); }
 
-/* Time and room as two cards, side by side on a wide screen and stacked on a
-   narrow one. `align-items: start` so expanding one card's panel does not
-   stretch the other to match. The gap does the spacing, so the cards drop
-   their own bottom margin. */
-.vitals-pair {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-  gap: 16px; align-items: start; margin-bottom: 16px;
+/* Time and room in one card, divided. Two cards separated them too far — they
+   are one reading of one batch — but they are independent axes with
+   independent remedies, so a rule keeps them from running together.
+   `align-items: start` stops one half's expanded panel stretching the other. */
+.vitals { display: grid; gap: 20px; align-items: start; }
+@media (min-width: 760px) {
+  .vitals { grid-template-columns: 1fr 1fr; }
+  .vitals > :last-child { border-left: 1px solid var(--border); padding-left: 20px; }
 }
-.vitals-pair > .card { margin-bottom: 0; }
+@media (max-width: 759px) {
+  .vitals > :last-child { border-top: 1px solid var(--border); padding-top: 20px; }
+}
 
 /* Clickable rows. The hover tint is the only affordance a table row has, so it
    has to be visible without being loud enough to read as selection. */
