@@ -133,22 +133,24 @@ body:has(.ambient) .wrap { position: relative; z-index: 1; }
 }
 .wrap { transition: opacity 240ms ease-out; }
 
-/* Ambient controls: the one thing that stays visible when the interface is
-   hidden, or there would be no way back. */
-.ambient-bar {
-  position: fixed; right: 16px; bottom: 16px; z-index: 10;
-  display: flex; gap: 8px; align-items: center;
+/* Map view: the batch name, the legend for what is on screen, and the way
+   back. The only chrome left when the panel is hidden, so it has to carry
+   everything needed to read the map. */
+.map-bar {
+  position: fixed; left: 16px; right: 16px; bottom: 16px; z-index: 10;
+  display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
   background: var(--surface-1); border: 1px solid var(--border);
-  border-radius: 999px; padding: 6px 8px 6px 14px;
+  border-radius: 10px; padding: 10px 14px;
   box-shadow: 0 2px 12px rgb(0 0 0 / 0.22);
   font-size: 12px;
 }
-.ambient-bar .label { color: var(--text-secondary); white-space: nowrap; }
-.ambient-bar button { padding: 5px 12px; font-size: 12px; }
-/* Faded until hovered so it does not sit on top of the view it exists to
-   reveal, but never fully invisible — a control you cannot find is a trap. */
-.wrap.ui-hidden ~ .ambient-bar { opacity: 0.35; }
-.ambient-bar:hover, .ambient-bar:focus-within { opacity: 1; }
+.map-bar .label { color: var(--text-primary); font-weight: 600; white-space: nowrap; }
+.map-bar button { padding: 5px 12px; font-size: 12px; margin-left: auto; }
+.map-legend { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+/* Recedes until hovered so it does not compete with the view it explains, but
+   never disappears — a control you cannot find is a trap. */
+.map-bar { opacity: 0.75; transition: opacity 160ms ease-out; }
+.map-bar:hover, .map-bar:focus-within { opacity: 1; }
 
 /* ── modal ──────────────────────────────────────────────────────────────
    The element is the sizing box, so width/max-height live here and the body

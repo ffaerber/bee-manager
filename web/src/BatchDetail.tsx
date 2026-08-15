@@ -116,7 +116,7 @@ export function BatchDetail({ batchId, state, onChange }: {
             <a className="backlink" {...link('/')}>← Batches</a>
             <h1>{title}</h1>
           </div>
-          <button onClick={() => setPanelHidden(true)}>Hide panel</button>
+          <button onClick={() => setPanelHidden(true)}>Show map</button>
         </div>
 
         {err && <div className="warn err">{err}</div>}
@@ -152,16 +152,6 @@ export function BatchDetail({ batchId, state, onChange }: {
                 sub={`of ${(1 << data.bucketDepth).toLocaleString()}`} />
               <Stat label="Fullest bucket" value={`${data.maxCollisions} / ${data.bucketUpperBound}`}
                 sub={data.fullBuckets > 0 ? `${data.fullBuckets.toLocaleString()} at capacity` : 'none at capacity'} />
-            </div>
-
-            {/* Identity is never colour alone: every swatch is labelled. */}
-            <div className="row" style={{ gap: 16, marginTop: 14, fontSize: 12, flexWrap: 'wrap' }}>
-              <Key color="var(--grid)" label="empty" />
-              <Key color="var(--map-low)" label="lightly used" />
-              <Key color="var(--map-mid)" label="half full" />
-              <Key color="var(--map-high)" label="mostly full" />
-              <Key color="var(--warning)" label="nearly full — 80%+" />
-              <Key color="var(--critical)" label="at capacity" />
             </div>
 
             <p className="muted" style={{ fontSize: 12, marginTop: 10 }}>
@@ -274,8 +264,20 @@ export function BatchDetail({ batchId, state, onChange }: {
       </div>
 
       {panelHidden && (
-        <div className="ambient-bar">
+        <div className="map-bar">
           <span className="label">{title}</span>
+          {/* The legend reads the thing on screen. It sat in the buckets card,
+              where the map is behind opaque panels and the colours it names are
+              not visible — a key to a picture you cannot see. Identity is never
+              colour alone, so every swatch stays labelled. */}
+          <div className="map-legend">
+            <Key color="var(--grid)" label="empty" />
+            <Key color="var(--map-low)" label="lightly used" />
+            <Key color="var(--map-mid)" label="half full" />
+            <Key color="var(--map-high)" label="mostly full" />
+            <Key color="var(--warning)" label="nearly full" />
+            <Key color="var(--critical)" label="at capacity" />
+          </div>
           <button onClick={() => setPanelHidden(false)}>Show panel</button>
         </div>
       )}
