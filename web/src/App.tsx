@@ -545,7 +545,10 @@ function Wizard({ state, onDone }: { state: State; onDone: () => void }) {
           {' '}at <strong>{arm.costBzz.toFixed(3)} {TOKEN}</strong>
           {state.fiat && ` (≈ $${(arm.costBzz * state.fiat.usd).toFixed(2)})`}
           {label ? <> · label <strong>{label}</strong></> : ' · no label'}.
-          {' '}Depth and immutability cannot be changed after purchase. Click confirm to spend.
+          {' '}Depth and immutability cannot be changed after purchase.
+          <div style={{ marginTop: 8, fontWeight: 600 }}>
+            Nothing has been spent yet — press the button again to buy.
+          </div>
         </div>
       )}
       {result && <div className={`warn ${result.startsWith('Failed') ? 'err' : ''}`}>{result}</div>}

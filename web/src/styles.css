@@ -298,3 +298,11 @@ tr.is-clickable:hover .rowlink { text-decoration: underline; }
 /* Settings: two columns on a wide screen, one on a narrow. Wider than the stat
    tiles because these hold editable fields with labels and hints. */
 .settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+
+/* The commit step of a two-click action. Distinct from .primary so the second
+   press is visibly the one that does something irreversible, rather than a
+   quieter version of the button that did not. */
+button.danger {
+  background: var(--critical); border-color: var(--critical); color: #fff; font-weight: 600;
+}
+button.danger:hover:not(:disabled) { filter: brightness(1.08); }

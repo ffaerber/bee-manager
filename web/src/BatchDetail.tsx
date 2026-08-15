@@ -672,9 +672,11 @@ function Topup({ b, onDone }: { b: Batch; onDone: () => Promise<void> }) {
             ? `${fmtDays(b.ttlDays)} now → ${days} d total`
             : `${fmtDays(b.ttlDays)} now → adds ${Math.max(0, days - b.ttlDays).toFixed(1)} d`}
         </span>
-        <button className={preview ? '' : 'primary'} disabled={busy || days <= b.ttlDays}
+        <button className={preview?.allowed ? 'danger' : 'primary'} disabled={busy || days <= b.ttlDays}
           onClick={() => go(Boolean(preview && preview.allowed))}>
-          {busy ? 'Working…' : preview ? (preview.allowed ? `Confirm — spend ${preview.costBzz.toFixed(3)} xBZZ` : 'Blocked') : 'Preview'}
+          {busy ? 'Working…'
+            : preview ? (preview.allowed ? `Yes — spend ${preview.costBzz.toFixed(3)} xBZZ` : 'Blocked')
+            : `Top up to ${days} days…`}
         </button>
         {preview && <button onClick={() => setPreview(null)} disabled={busy}>Cancel</button>}
       </div>
@@ -689,6 +691,11 @@ function Topup({ b, onDone }: { b: Batch; onDone: () => Promise<void> }) {
           {preview.unmanaged && preview.allowed && (
             <> <strong>This batch is unmanaged</strong>, so nothing will renew it after this —
               it will lapse once the time you are buying runs out.</>
+          )}
+          {preview.allowed && (
+            <div style={{ marginTop: 8, fontWeight: 600 }}>
+              Nothing has been spent yet — press the button again to confirm.
+            </div>
           )}
         </div>
       )}
@@ -758,9 +765,14 @@ function Dilute({ b, onDone }: { b: Batch; onDone: () => Promise<void> }) {
             ))}
           </select>
         </label>
-        <button className={preview ? '' : 'primary'} disabled={busy}
+        {/* The commit step is the LOUD one. It used to drop to the plain
+            style exactly when it became the button that acts, so the first
+            click looked like it had done nothing and left nothing to press. */}
+        <button className={preview ? 'danger' : 'primary'} disabled={busy}
           onClick={() => go(Boolean(preview))}>
-          {busy ? 'Working…' : preview ? `Confirm — depth ${preview.toDepth}` : 'Preview'}
+          {busy ? 'Working…'
+            : preview ? `Yes — dilute to depth ${preview.toDepth}`
+            : `Dilute to depth ${b.depth + steps}…`}
         </button>
         {preview && <button onClick={() => setPreview(null)} disabled={busy}>Cancel</button>}
       </div>
@@ -778,6 +790,9 @@ function Dilute({ b, onDone }: { b: Batch; onDone: () => Promise<void> }) {
             ? ' This batch is managed, so auto top-up will restore it on the next cycle, within the caps.'
             : ' This batch is unmanaged, so nothing will restore that life automatically — top up by hand afterwards.'}
           {' '}Depth cannot be reduced again.
+          <div style={{ marginTop: 8, fontWeight: 600 }}>
+            Nothing has changed yet — press the button again to dilute.
+          </div>
         </div>
       )}
       {done && <div className="warn" style={{ borderLeftColor: 'var(--good)', background: 'transparent' }}>{done}</div>}
