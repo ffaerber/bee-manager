@@ -340,16 +340,20 @@ export class Db {
    *
    * A rate needs a baseline far enough back to be meaningful: two readings
    * eight seconds apart on a balance that moves in occasional cheques would
-   * report either zero drain or an absurd one. Returns undefined until the
-   * history is long enough, which callers must render as "measuring" rather
-   * than as a number.
+   * report either zero drain or an absurd one. Returns null until the history is
+   * long enough, which callers must render as "measuring" rather than as a
+   * number.
+   *
+   * Null and not undefined because that is what bun:sqlite's .get() actually
+   * returns for no row — declaring undefined would make any `=== undefined`
+   * check silently never fire.
    */
   chequebookBaseline(minAgeMs: number, now = Date.now()) {
     return this.db.query(
       `SELECT ts, total, available, sent, received FROM chequebook_snapshots
        WHERE ts <= ? ORDER BY ts DESC LIMIT 1`,
     ).get(now - minAgeMs) as
-      { ts: number; total: string; available: string; sent: string; received: string } | undefined;
+      { ts: number; total: string; available: string; sent: string; received: string } | null;
   }
 
   snapshots(batchId: string, limit = 500) {
@@ -359,9 +363,17 @@ export class Db {
     ).all(batchId, limit).map((r: any) => ({ ...r, amount: BigInt(r.amount), price: BigInt(r.price) }));
   }
 
-  /** Drop snapshots older than `days` so the file does not grow without bound. */
+  /**
+   * Drop snapshots older than `days` so the file does not grow without bound.
+   *
+   * Covers the chequebook table too. It is written once per poll like the batch
+   * one, so leaving it out meant roughly 105,000 rows a year accumulating in a
+   * file whose whole point is to be small enough to sit on a single volume.
+   */
   pruneSnapshots(days = 90, now = Date.now()) {
-    this.db.query(`DELETE FROM snapshots WHERE ts < ?`).run(now - days * 86_400_000);
+    const cutoff = now - days * 86_400_000;
+    this.db.query(`DELETE FROM snapshots WHERE ts < ?`).run(cutoff);
+    this.db.query(`DELETE FROM chequebook_snapshots WHERE ts < ?`).run(cutoff);
   }
 
   // ── actions / spend ledger ───────────────────────────────────────────

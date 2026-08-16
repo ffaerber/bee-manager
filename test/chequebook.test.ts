@@ -9,6 +9,7 @@
 
 import { describe, expect, it } from 'bun:test';
 import { chequebookRunwayDays, chequebookSpendPer30Days } from '../src/math';
+import { Db } from '../src/db';
 
 const H = 3_600_000, D = 86_400_000;
 const xbzz = (n: number) => BigInt(Math.round(n * 1e16));
@@ -62,5 +63,36 @@ describe('chequebookRunwayDays', () => {
     const spend = chequebookSpendPer30Days(71_494_400_000_4400n, 0n, 90 * D);
     expect(spend).not.toBeNull();
     expect(chequebookRunwayDays(99_285_055_999_995_600n, spend)!).toBeGreaterThan(1000);
+  });
+});
+
+describe('chequebook history retention', () => {
+  it('records a snapshot and finds a baseline old enough to measure over', () => {
+    const db = new Db(':memory:');
+    const now = Date.now();
+    db.recordChequebook(xbzz(10), xbzz(9), xbzz(1), 0n, now - 4 * H);
+    db.recordChequebook(xbzz(10), xbzz(8), xbzz(2), 0n, now);
+
+    // Nothing is old enough for a 6h window yet.
+    expect(db.chequebookBaseline(6 * H, now)).toBeNull();
+
+    const base = db.chequebookBaseline(H, now);
+    expect(base).toBeDefined();
+    expect(BigInt(base!.sent)).toBe(xbzz(1));
+    expect(chequebookSpendPer30Days(xbzz(2), BigInt(base!.sent), now - base!.ts))
+      .toBe(chequebookSpendPer30Days(xbzz(1), 0n, 4 * H));
+  });
+
+  it('is pruned with the batch snapshots, not left to grow forever', () => {
+    const db = new Db(':memory:');
+    const now = Date.now();
+    db.recordChequebook(xbzz(10), xbzz(9), xbzz(1), 0n, now - 200 * D);
+    db.recordChequebook(xbzz(10), xbzz(8), xbzz(2), 0n, now - 2 * D);
+
+    db.pruneSnapshots(90, now);
+
+    // The 200-day-old row is gone; the recent one survives.
+    expect(db.chequebookBaseline(100 * D, now)).toBeNull();
+    expect(db.chequebookBaseline(D, now)).toBeDefined();
   });
 });

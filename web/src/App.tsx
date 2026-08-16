@@ -12,6 +12,7 @@ import type { Batch, Ladder, Quote, State, Action } from './api';
 
 export default function App() {
   const [state, setState] = useState<State | null>(null);
+  const [notReady, setNotReady] = useState<string | null>(null);
   const [actions, setActions] = useState<Action[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [token, setTok] = useState(api.getToken());
@@ -20,6 +21,21 @@ export default function App() {
   const load = useCallback(async () => {
     try {
       const [s, a] = await Promise.all([api.getState(), api.getActions()]);
+      // A successful fetch is NOT proof of a usable State. Until the first poll
+      // completes, /state answers HTTP 200 with {ok:false, error} — req() only
+      // throws on a bad status, so that half-built object used to be assigned
+      // here and then dereferenced, white-screening both the dashboard
+      // (state.config.autoTopupEnabled) and the batch page
+      // (state.batches.find) on every restart until the poll landed.
+      //
+      // Every consumer already handles null; none of them handle half a State.
+      if (!s || !(s as Partial<State>).config) {
+        setState(null);
+        setNotReady((s as { error?: string } | undefined)?.error ?? 'waiting for the first poll');
+        setErr(null);
+        return;
+      }
+      setNotReady(null);
       setState(s); setActions(a); setErr(null);
     } catch (e: any) { setErr(e.message); }
   }, []);
@@ -73,7 +89,7 @@ export default function App() {
   if (isSettings(path)) return <Settings state={state} onPolled={load} onSignOut={signOut} />;
   if (batchId) return <BatchDetail batchId={batchId} state={state} onChange={load} />;
 
-  if (!state) return <div className="wrap"><p className="muted">Loading…</p></div>;
+  if (!state) return <div className="wrap"><p className="muted">{notReady ?? 'Loading…'}</p></div>;
 
   const armed = state.config.autoTopupEnabled && !state.config.dryRun;
 

@@ -199,9 +199,14 @@ function Service({ state, polling, onPoll, onSignOut }: {
             code path the 5-minute cycle uses. Saying so is the difference
             between an informed click and a surprise. */}
         <span className="muted" style={{ fontSize: 12 }}>
-          {armed
-            ? 'Runs a full cycle now rather than waiting. Auto top-up is armed, so this can buy — within the caps below.'
-            : 'Runs a full cycle now rather than waiting. Auto top-up is off, so it will report what it would have done and spend nothing.'}
+          {/* Three cases. `armed` is null before the first poll lands, and
+              "it will spend nothing" is a safety claim — asserting one we have
+              not actually checked is how money gets spent by surprise. */}
+          {armed == null
+            ? 'Runs a full cycle now rather than waiting. Whether auto top-up is armed is not known yet, so this may buy — within the caps below.'
+            : armed
+              ? 'Runs a full cycle now rather than waiting. Auto top-up is armed, so this can buy — within the caps below.'
+              : 'Runs a full cycle now rather than waiting. Auto top-up is off, so it will report what it would have done and spend nothing.'}
         </span>
       </div>
       <div className="row" style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--grid)' }}>
@@ -259,12 +264,15 @@ function Field({ s, busy, onSave }: {
   return (
     <div>
       <div className="tile-label">{s.label}</div>
+      {/* xBZZ caps are routinely fractional, so they step like a float. A
+          whole-token step made the spinner useless and marked 0.25 invalid,
+          even though onBlur reads the raw value and saved it regardless. */}
       <input
         type={s.kind === 'string' ? 'text' : 'number'}
         defaultValue={s.value === null ? '' : String(s.value)}
         disabled={busy}
         min={s.min} max={s.max}
-        step={s.kind === 'float' ? '0.05' : undefined}
+        step={s.kind === 'float' || s.kind === 'bzz' ? '0.05' : undefined}
         style={{ width: '100%', padding: '5px 8px', fontSize: 14, marginTop: 2 }}
         onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
         onBlur={(e) => {
