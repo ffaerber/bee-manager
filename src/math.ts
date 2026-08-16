@@ -116,3 +116,37 @@ export function runwaySeconds(walletPlur: bigint, burnPlurPer30Days: bigint): nu
   if (burnPlurPer30Days <= 0n) return Infinity;
   return Number((walletPlur * BigInt(30 * 86400)) / burnPlurPer30Days);
 }
+
+/**
+ * Bandwidth spend rate and chequebook runway, from two settlement readings.
+ *
+ * Derived from `settlementsSent` rather than from the balance on purpose.
+ * Sent is cumulative and only ever increases, so it measures exactly what left
+ * for bandwidth in the window. The balance also moves when the chequebook is
+ * topped up or a peer cashes a cheque, and a deposit would otherwise read as
+ * negative spend and put the runway at infinity right after you funded it.
+ *
+ * `sent` going BACKWARDS means a different chequebook — a redeployed node, or
+ * a wiped database — so the window is treated as having no usable baseline
+ * rather than as a negative rate.
+ */
+export function chequebookSpendPer30Days(
+  sentNow: bigint,
+  sentThen: bigint,
+  windowMs: number,
+): bigint | null {
+  if (windowMs <= 0 || sentNow < sentThen) return null;
+  return ((sentNow - sentThen) * BigInt(30 * 86_400_000)) / BigInt(windowMs);
+}
+
+/**
+ * Days of bandwidth the chequebook can still pay for.
+ *
+ * Null rather than Infinity when nothing is being spent: Infinity does not
+ * survive JSON.stringify — it becomes null on the wire anyway — so the absence
+ * is made explicit here instead of being discovered by the client.
+ */
+export function chequebookRunwayDays(availablePlur: bigint, spentPer30Days: bigint | null): number | null {
+  if (spentPer30Days == null || spentPer30Days <= 0n) return null;
+  return Number((availablePlur * BigInt(30 * 86400)) / spentPer30Days) / 86_400;
+}

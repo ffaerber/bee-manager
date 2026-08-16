@@ -13,8 +13,20 @@ import { Db } from './db';
 import { applySettings } from './settings';
 import { Alerter } from './alerts';
 import { evaluateAll, findDisappeared, totalBurnPer30Days, totalCommitted, type EvalContext, type Plan } from './evaluate';
-import { plurToBzz, runwaySeconds, GNOSIS_MS_PER_BLOCK } from './math';
+import {
+  chequebookRunwayDays, chequebookSpendPer30Days,
+  plurToBzz, runwaySeconds, GNOSIS_MS_PER_BLOCK,
+} from './math';
 import type { Config } from './config';
+
+/**
+ * How far back the chequebook rate is measured.
+ *
+ * An hour, because settlement is lumpy: cheques are written when a peer's debt
+ * crosses a threshold, not continuously. Over seconds the observed rate is
+ * either zero or a spike; over an hour it is a rate.
+ */
+const CHEQUEBOOK_RATE_WINDOW_MS = 3_600_000;
 
 export interface PollResult {
   ok: boolean;
@@ -45,6 +57,26 @@ export interface PollResult {
   totalRunwayDays: number;
   /** Value paid into the batches and not yet consumed, in xBZZ. */
   committedBzz: number;
+  /**
+   * SWAP settlement health. Absent when the node has no chequebook, or when
+   * the endpoints could not be read — the rest of the poll still stands.
+   */
+  chequebook?: {
+    totalBzz: number;
+    /** Spendable on bandwidth right now. Outstanding cheques are already out. */
+    availableBzz: number;
+    sentBzz: number;
+    receivedBzz: number;
+    /** Null until there is enough history to measure a rate over. */
+    spendPer30DaysBzz: number | null;
+    /** Null when nothing is being spent — never Infinity, which JSON drops. */
+    runwayDays: number | null;
+    /** How long the rate was measured over, in ms. Zero when unmeasured. */
+    windowMs: number;
+    peers: number;
+    peersOwingUs: number;
+    low: boolean;
+  };
   /**
    * When this snapshot was taken, in server-clock epoch ms.
    *
@@ -215,6 +247,7 @@ export class Poller {
     const committed = totalCommitted(batches);
     const totalRunwayDays = runwaySeconds(wallet.bzzBalance + committed, burn) / 86_400;
 
+
     if (runwayDays < cfg.walletLowRunwayDays) {
       await this.alerter.send({
         event: 'wallet_low', level: 'warn',
@@ -247,6 +280,9 @@ export class Poller {
     // stamps it reports on are already read above.
     const node = await this.bee.nodeStatus().catch(() => undefined);
 
+    // Depends on `node`, so it has to come after that read.
+    const chequebook = await this.readChequebook(node, cfg, now);
+
     this.last = {
       ok: true, batches, chain, wallet, node, plans,
       msPerBlock: this.msPerBlock,
@@ -254,6 +290,7 @@ export class Poller {
       runwayDays,
       totalRunwayDays,
       committedBzz: plurToBzz(committed),
+      chequebook,
       polledAt: now,
     };
     this.db.pruneSnapshots(90, now);
@@ -303,6 +340,60 @@ export class Poller {
   }
 
   /** The only place in the codebase that spends money on a schedule. */
+  /**
+   * Chequebook health, and the rate it is being spent at.
+   *
+   * The rate has to be measured because Bee reports a balance and nothing
+   * about its velocity — there is no chequebook equivalent of batchTTL. So
+   * every poll records a snapshot and the rate comes from comparing against
+   * one at least an hour old. Until that much history exists the rate is null
+   * and the UI says "measuring", rather than dividing by a few seconds and
+   * printing a number that is pure noise.
+   *
+   * Deliberately never throws: an unreadable chequebook must not fail a poll
+   * whose real job is keeping stamps alive.
+   */
+  private async readChequebook(node: NodeStatus | undefined, cfg: Config, now: number) {
+    const total = node?.chequebookBalance;
+    const available = node?.chequebookAvailable;
+    if (total == null || available == null) return undefined;
+
+    const sent = node?.settlementsSent ?? 0n;
+    const received = node?.settlementsReceived ?? 0n;
+
+    this.db.recordChequebook(total, available, sent, received, now);
+
+    const base = this.db.chequebookBaseline(CHEQUEBOOK_RATE_WINDOW_MS, now);
+    const spend = base
+      ? chequebookSpendPer30Days(sent, BigInt(base.sent), now - base.ts)
+      : null;
+
+    const low = available < cfg.chequebookLowPlur;
+    if (low) {
+      await this.alerter.send({
+        event: 'chequebook_low', level: 'warn',
+        message: `Chequebook has ${plurToBzz(available).toFixed(4)} xBZZ spendable, below the ` +
+                 `${plurToBzz(cfg.chequebookLowPlur).toFixed(4)} xBZZ floor. Uploads and retrievals ` +
+                 `are paid from this — an empty chequebook degrades them silently rather than ` +
+                 `expiring anything.`,
+        details: { availableBzz: plurToBzz(available), floorBzz: plurToBzz(cfg.chequebookLowPlur) },
+      });
+    }
+
+    return {
+      totalBzz: plurToBzz(total),
+      availableBzz: plurToBzz(available),
+      sentBzz: plurToBzz(sent),
+      receivedBzz: plurToBzz(received),
+      spendPer30DaysBzz: spend == null ? null : plurToBzz(spend),
+      runwayDays: chequebookRunwayDays(available, spend),
+      windowMs: base ? now - base.ts : 0,
+      peers: node?.chequePeers ?? 0,
+      peersOwingUs: node?.peersOwingUs ?? 0,
+      low,
+    };
+  }
+
   private async execute(plan: Extract<Plan, { kind: 'topup' | 'dilute' }>, batch?: Batch) {
     const kind = plan.kind === 'dilute' ? 'dilute' : 'topup';
     const amount = plan.kind === 'dilute' ? plan.thenTopup : plan.amountPerChunk;

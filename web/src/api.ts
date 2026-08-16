@@ -46,17 +46,42 @@ export interface BatchPolicy {
   diluteAbove: number | null;
   maxDiluteDepth: number | null;
 }
+export interface Chequebook {
+  totalBzz: number;
+  /** Spendable on bandwidth right now — outstanding cheques already deducted. */
+  availableBzz: number;
+  sentBzz: number;
+  receivedBzz: number;
+  /** Null until an hour of history exists to measure a rate over. */
+  spendPer30DaysBzz: number | null;
+  /** Null when nothing is being spent. Never Infinity — JSON would drop it. */
+  runwayDays: number | null;
+  windowMs: number;
+  peers: number;
+  peersOwingUs: number;
+  low: boolean;
+}
+
 export interface State {
   ok: boolean; error: string | null; msPerBlock: number;
   burnPer30DaysBzz: number;
-  /** Wallet / burn — what is left to fund future top-ups. Flat between spends. */
-  runwayDays: number;
+  /**
+   * Wallet / burn — what is left to fund future top-ups. Flat between spends.
+   *
+   * Null means nothing is burning, so the runway is unbounded. It is null and
+   * not Infinity because Infinity does not survive JSON: the server sends null
+   * either way, and typing it honestly stops `isFinite(null) === true` turning
+   * "forever" into a critical zero.
+   */
+  runwayDays: number | null;
   /** (Wallet + committed batch value) / burn. The one that truly counts down. */
-  totalRunwayDays: number;
+  totalRunwayDays: number | null;
   /** Value paid into the batches and not yet consumed, in xBZZ. */
   committedBzz: number;
   /** Age of this snapshot in ms, measured on the server. /state is cached. */
   dataAgeMs: number;
+  /** SWAP settlement health. Null when the node has no readable chequebook. */
+  chequebook: Chequebook | null;
   wallet?: {
     bzz: number; xdai: number; address: string;
     chainId: number; chequebookAddress: string;

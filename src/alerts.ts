@@ -18,6 +18,7 @@ export type AlertEvent =
   | 'dilute_executed'
   | 'batch_bought'
   | 'wallet_low'
+  | 'chequebook_low'
   | 'quota_exceeded'
   | 'node_unreachable';
 

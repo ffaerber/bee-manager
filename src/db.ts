@@ -119,6 +119,21 @@ export class Db {
         price         TEXT NOT NULL
       );
       CREATE INDEX IF NOT EXISTS idx_snapshots_batch_ts ON snapshots (batch_id, ts DESC);
+      -- Chequebook history. Separate from the snapshots table because that one
+      -- is keyed by batch and this is a property of the node.
+      --
+      -- Kept at all because the chequebook has no equivalent of batchTTL: the
+      -- node reports a balance and nothing about how fast it is going. The only
+      -- way to a drain rate is to remember what it was.
+      CREATE TABLE IF NOT EXISTS chequebook_snapshots (
+        id        INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts        INTEGER NOT NULL,
+        total     TEXT NOT NULL,
+        available TEXT NOT NULL,
+        sent      TEXT NOT NULL,
+        received  TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_chequebook_ts ON chequebook_snapshots (ts DESC);
       CREATE TABLE IF NOT EXISTS actions (
         id        INTEGER PRIMARY KEY AUTOINCREMENT,
         ts        INTEGER NOT NULL,
@@ -311,6 +326,30 @@ export class Db {
       INSERT INTO snapshots (batch_id, ts, ttl, amount, depth, utilization, price)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(batchId, now, ttl, amount.toString(), depth, utilization, price.toString());
+  }
+
+  recordChequebook(total: bigint, available: bigint, sent: bigint, received: bigint, now = Date.now()) {
+    this.db.query(`
+      INSERT INTO chequebook_snapshots (ts, total, available, sent, received)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(now, total.toString(), available.toString(), sent.toString(), received.toString());
+  }
+
+  /**
+   * The oldest chequebook snapshot at least `minAgeMs` old.
+   *
+   * A rate needs a baseline far enough back to be meaningful: two readings
+   * eight seconds apart on a balance that moves in occasional cheques would
+   * report either zero drain or an absurd one. Returns undefined until the
+   * history is long enough, which callers must render as "measuring" rather
+   * than as a number.
+   */
+  chequebookBaseline(minAgeMs: number, now = Date.now()) {
+    return this.db.query(
+      `SELECT ts, total, available, sent, received FROM chequebook_snapshots
+       WHERE ts <= ? ORDER BY ts DESC LIMIT 1`,
+    ).get(now - minAgeMs) as
+      { ts: number; total: string; available: string; sent: string; received: string } | undefined;
   }
 
   snapshots(batchId: string, limit = 500) {

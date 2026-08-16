@@ -130,8 +130,6 @@ export function createServer(deps: ServerDeps) {
             error: r.error ?? null,
             msPerBlock: r.msPerBlock,
             burnPer30DaysBzz: r.burnPer30DaysBzz,
-            runwayDays: r.runwayDays,
-            totalRunwayDays: r.totalRunwayDays,
             committedBzz: r.committedBzz,
             /**
              * How stale this snapshot is, measured entirely on the server
@@ -141,6 +139,18 @@ export function createServer(deps: ServerDeps) {
              * being wrong, where comparing two absolute timestamps is not.
              */
             dataAgeMs: Math.max(0, Date.now() - r.polledAt),
+            chequebook: r.chequebook ?? null,
+            /**
+             * Explicitly null, not Infinity.
+             *
+             * runwaySeconds() returns Infinity when nothing is burning, and
+             * JSON.stringify turns that into null on the wire regardless. The
+             * client's global isFinite() then reads null as 0 and reports a
+             * critical, zero-day runway on a node that has nothing to burn.
+             * Normalising here makes the wire contract match the type.
+             */
+            runwayDays: isFinite(r.runwayDays) ? r.runwayDays : null,
+            totalRunwayDays: isFinite(r.totalRunwayDays) ? r.totalRunwayDays : null,
             wallet: r.wallet && {
               bzz: plurToBzz(r.wallet.bzzBalance),
               xdai: Number(r.wallet.nativeTokenBalance) / 1e18,

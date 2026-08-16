@@ -57,6 +57,19 @@ export interface NodeStatus {
   stakedAmount?: bigint;
   chequebookBalance?: bigint;
   chequebookAvailable?: bigint;
+  /**
+   * Lifetime SWAP settlement, in PLUR.
+   *
+   * Bandwidth is paid for by the node doing the retrieving, so a node that
+   * uploads and reads more than it serves is a net payer. These are cumulative
+   * and only ever increase, which is what makes them usable as a rate.
+   */
+  settlementsSent?: bigint;
+  settlementsReceived?: bigint;
+  /** Peers this node has written a cheque to, or received one from. */
+  chequePeers?: number;
+  /** Peers whose cheque to us has not been cashed — money owed, sitting idle. */
+  peersOwingUs?: number;
   peers?: number;
   storageRadius?: number;
   error?: string;
@@ -216,12 +229,14 @@ export class BeeClient {
         apiVersion: health?.apiVersion,
       };
       const settle = async <T>(p: Promise<T>): Promise<T | undefined> => p.catch(() => undefined);
-      const [node, stake, cheque, reserve, topology] = await Promise.all([
+      const [node, stake, cheque, reserve, topology, settlements, cheques] = await Promise.all([
         settle(this.request('/node')),
         settle(this.request('/stake')),
         settle(this.request('/chequebook/balance')),
         settle(this.request('/reservestate')),
         settle(this.request('/topology')),
+        settle(this.request('/settlements')),
+        settle(this.request('/chequebook/cheque')),
       ]);
       if (node) { status.beeMode = node.beeMode; status.chequebookEnabled = node.chequebookEnabled; }
       if (stake?.stakedAmount != null) status.stakedAmount = BigInt(stake.stakedAmount);
@@ -229,6 +244,15 @@ export class BeeClient {
       if (cheque?.availableBalance != null) status.chequebookAvailable = BigInt(cheque.availableBalance);
       if (reserve?.storageRadius != null) status.storageRadius = reserve.storageRadius;
       if (topology?.connected != null) status.peers = topology.connected;
+      if (settlements?.totalSent != null) status.settlementsSent = BigInt(settlements.totalSent);
+      if (settlements?.totalReceived != null) status.settlementsReceived = BigInt(settlements.totalReceived);
+      if (Array.isArray(cheques?.lastcheques)) {
+        status.chequePeers = cheques.lastcheques.length;
+        // `lastreceived` is null for a peer we have only ever paid. A non-null
+        // one is a cheque written TO us; whether it has been cashed is a
+        // separate per-peer call, so this counts claims rather than value.
+        status.peersOwingUs = cheques.lastcheques.filter((c: any) => c?.lastreceived != null).length;
+      }
       return status;
     } catch (e: any) {
       return { healthy: false, error: e?.message ?? String(e) };

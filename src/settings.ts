@@ -100,6 +100,8 @@ export const EDITABLE: Spec[] = [
 
   { group: 'alerts', key: 'walletLowRunwayDays', kind: 'int', looserWhen: null,
     min: 1, max: 3650, label: 'Warn when runway below', hint: 'days' },
+  { group: 'alerts', key: 'chequebookLowBzz', kind: 'bzz', looserWhen: null,
+    label: 'Warn when chequebook below', hint: 'xBZZ spendable on bandwidth' },
   { group: 'alerts', key: 'webhookUrl', kind: 'string', looserWhen: null,
     label: 'Webhook URL', hint: 'where alerts are POSTed — unset means nothing is announced' },
 
@@ -122,6 +124,7 @@ export function envValue(cfg: Config, key: string): string | number | boolean | 
     case 'maxTopupBzzPerBatch': return plurToBzz(cfg.maxTopupPlurPerBatch);
     case 'maxTopupBzzPerDay': return plurToBzz(cfg.maxTopupPlurPerDay);
     case 'minWalletBzz': return plurToBzz(cfg.minWalletPlur);
+    case 'chequebookLowBzz': return plurToBzz(cfg.chequebookLowPlur);
     case 'minWalletXdai': return Number(cfg.minWalletXdaiWei) / 1e18;
     case 'walletLowRunwayDays': return cfg.walletLowRunwayDays;
     case 'webhookUrl': return cfg.webhookUrl;
@@ -204,6 +207,7 @@ export function applySettings(cfg: Config, stored: Record<string, string>): Conf
       case 'maxTopupBzzPerBatch': out.maxTopupPlurPerBatch = bzzToPlur(String(value)); break;
       case 'maxTopupBzzPerDay': out.maxTopupPlurPerDay = bzzToPlur(String(value)); break;
       case 'minWalletBzz': out.minWalletPlur = bzzToPlur(String(value)); break;
+      case 'chequebookLowBzz': out.chequebookLowPlur = bzzToPlur(String(value)); break;
       case 'minWalletXdai': out.minWalletXdaiWei = BigInt(Math.round(value * 1e18)); break;
       case 'walletLowRunwayDays': out.walletLowRunwayDays = value; break;
     }

@@ -72,6 +72,15 @@ export interface Config {
   publicGatewayUrl: string;
   alertCooldownMs: number;
   walletLowRunwayDays: number;
+  /**
+   * Warn when the chequebook's SPENDABLE balance falls below this, in xBZZ.
+   *
+   * Separate from the wallet floor because it protects a different thing: the
+   * wallet buys postage, the chequebook pays peers for bandwidth. An empty
+   * chequebook does not expire anything — it quietly degrades uploads and
+   * retrievals, which is harder to notice and so more worth alerting on.
+   */
+  chequebookLowPlur: bigint;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -136,6 +145,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       publicGatewayUrl: str('PUBLIC_GATEWAY_URL', 'https://download.gateway.ethswarm.org').replace(/\/+$/, ''),
       alertCooldownMs: int('ALERT_COOLDOWN_MS', 6 * 3_600_000, 0),
       walletLowRunwayDays: int('WALLET_LOW_RUNWAY_DAYS', 30, 1),
+      chequebookLowPlur: plur('CHEQUEBOOK_LOW_BZZ', '1'),
     };
 
     if (cfg.topupTargetTtlSec <= cfg.topupWhenTtlBelowSec) {

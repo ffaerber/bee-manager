@@ -5,6 +5,7 @@ import { BatchDetail } from './BatchDetail';
 import { batchIdFrom, isSettings, link, navigate, usePath } from './router';
 import { Settings } from './Settings';
 import { Wallet } from './Wallet';
+import { Chequebook } from './Chequebook';
 import { countdown, fmtDays, runwayRemainingMs, ttlSeverity } from './format';
 import { Modal } from './Modal';
 import type { Batch, Ladder, Quote, State, Action } from './api';
@@ -114,6 +115,7 @@ export default function App() {
 
       <Overview state={state} />
       <Wallet state={state} />
+      <Chequebook state={state} />
       <Batches state={state} onChange={load} />
       <Actions actions={actions} />
     </div>
@@ -129,7 +131,10 @@ function Overview({ state }: { state: State }) {
   // second per second. Wallet-over-burn is flat between top-ups and would make
   // any ticking clock a fiction, which is why it sits in a tile instead.
   const runway = state.totalRunwayDays;
-  const sev = runway < 30 ? 'critical' : runway < 90 ? 'warning' : 'good';
+  // Null means nothing is burning, so there is no bound to be short of. It has
+  // to be tested BEFORE the comparisons: `null < 30` is true, which would
+  // report the most comfortable possible state as the most critical one.
+  const sev = runway == null ? 'good' : runway < 30 ? 'critical' : runway < 90 ? 'warning' : 'good';
   /**
    * Fiat sub-line, e.g. "≈ $8.27". No period suffix: the tile's label already
    * says whether the figure is a balance or a rate.
@@ -158,8 +163,10 @@ function Overview({ state }: { state: State }) {
             question from the hero — not "how long until things lapse" but
             "how long can I keep paying to stop them" — and because it is the
             figure the low-wallet alert is defined against. */}
-        <Tile label="Wallet runway" value={isFinite(state.runwayDays) ? Math.round(state.runwayDays).toLocaleString() : '∞'}
-          unit="d" sub="funds future top-ups" />
+        <Tile label="Wallet runway"
+          value={state.runwayDays == null ? '∞' : Math.round(state.runwayDays).toLocaleString()}
+          unit={state.runwayDays == null ? undefined : 'd'}
+          sub={state.runwayDays == null ? 'nothing is burning' : 'funds future top-ups'} />
         <Tile label="Burn rate per 30 days" value={state.burnPer30DaysBzz.toFixed(2)} unit={TOKEN}
           fiat={fiat(state.burnPer30DaysBzz)} />
         <Tile label="Prepaid in batches" value={state.committedBzz.toFixed(2)} unit={TOKEN}
@@ -193,7 +200,7 @@ function Overview({ state }: { state: State }) {
  * price changes. The seconds are exact about elapsed time, not about the
  * prediction — this is a rate of consumption made visible, not a deadline.
  */
-function Runway({ days, sev, ageMs }: { days: number; sev: string; ageMs: number }) {
+function Runway({ days, sev, ageMs }: { days: number | null; sev: string; ageMs: number }) {
   const anchor = useMemo(() => ({ at: Date.now(), days, ageMs }), [days, ageMs]);
   const [, tick] = useState(0);
   useEffect(() => {
@@ -202,7 +209,9 @@ function Runway({ days, sev, ageMs }: { days: number; sev: string; ageMs: number
   }, []);
 
   // No burn means nothing is being consumed, so there is no clock to run.
-  if (!isFinite(anchor.days)) {
+  // `== null` rather than isFinite(): the global isFinite coerces null to 0 and
+  // would send an unbounded runway down the counting path as zero.
+  if (anchor.days == null || !Number.isFinite(anchor.days)) {
     return <div className={`hero-value ${sev}`}>∞<span className="hero-unit">days</span></div>;
   }
 

@@ -9,7 +9,8 @@
  *
  *   wallet      spendable — this is what the WALLET runway is computed from
  *               (the hero's total runway adds the batches' prepaid value)
- *   chequebook  bandwidth settlement with other nodes
+ *   chequebook  bandwidth settlement with other nodes — its own card below,
+ *               because it is monitored rather than merely held
  *   stake       locked in the storage incentives contract
  *
  * Showing only the wallet made the balance look smaller than it is; showing all
@@ -68,14 +69,6 @@ export function Wallet({ state }: { state: State }) {
           <div className="tile-label">Gas</div>
           <div className="tile-value">{w.xdai.toFixed(2)}<span className="tile-unit">xDAI</span></div>
           <div className="tile-sub">every purchase needs some</div>
-        </div>
-        <div>
-          <div className="tile-label">In the chequebook</div>
-          <div className="tile-value" style={{ fontSize: 18 }}>
-            {w.chequebookBzz != null ? w.chequebookBzz.toFixed(2) : '—'}
-            <span className="tile-unit">xBZZ</span>
-          </div>
-          <div className="tile-sub">pays other nodes for bandwidth · not for stamps</div>
         </div>
         <div>
           <div className="tile-label">Staked</div>
