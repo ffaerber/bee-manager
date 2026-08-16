@@ -193,6 +193,11 @@ h2 { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
    but still large enough to be part of the headline rather than a footnote.
    Tabular is not optional here: at 1 Hz, proportional digits would make the
    whole line jitter every second. */
+/* The clock standing in AS the hero, inside the last day. Smaller than a bare
+   day count because it is eight glyphs rather than two or three — at 76px it
+   would run past the card. */
+.hero-value.is-clock { font-size: 54px; letter-spacing: -0.03em; }
+
 .hero-clock {
   font-size: 34px; font-weight: 600; letter-spacing: -0.01em;
   color: var(--text-secondary); margin-left: 16px;

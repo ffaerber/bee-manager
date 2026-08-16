@@ -165,8 +165,18 @@ function Overview({ state }: { state: State }) {
         <div>
           <div className="hero-label">Runway until everything lapses</div>
           <Runway days={runway} sev={sev} ageMs={state.dataAgeMs} />
+          {/* Finer than the severity bands below a month. "Under a month" is
+              true with seven hours left, and true is not the same as useful —
+              the pill should not undersell what the clock beside it is
+              saying. */}
           <div className={`status ${sev}`} style={{ marginTop: 14 }}>
-            {sev === 'good' ? 'comfortable' : sev === 'warning' ? 'under three months' : 'under a month'}
+            {runway == null ? 'nothing is burning'
+              : runway < 1 ? 'under a day'
+              : runway < 2 ? 'under two days'
+              : runway < 7 ? 'under a week'
+              : runway < 30 ? 'under a month'
+              : runway < 90 ? 'under three months'
+              : 'comfortable'}
           </div>
         </div>
       </div>
@@ -216,13 +226,41 @@ function Overview({ state }: { state: State }) {
  * price changes. The seconds are exact about elapsed time, not about the
  * prediction — this is a rate of consumption made visible, not a deadline.
  */
+/**
+ * Below this, the seconds are worth watching. Above it they are just motion.
+ *
+ * At 144 days a ticking seconds field says nothing a reader can act on, and
+ * a number that never stops moving is one the eye keeps returning to for no
+ * reward. Inside two days the same field is the whole point.
+ */
+const CLOCK_BELOW_MS = 48 * 3_600_000;
+
 function Runway({ days, sev, ageMs }: { days: number | null; sev: string; ageMs: number }) {
   const anchor = useMemo(() => ({ at: Date.now(), days, ageMs }), [days, ageMs]);
   const [, tick] = useState(0);
+
+  // Two subtractions, because the figure was already stale when it arrived.
+  // /state serves a cached poll, so `ageMs` is how long the SERVER says it has
+  // been running (server clock, immune to a wrong browser clock), and the
+  // second term is how long it has been since this tab received it. Without
+  // the first, the clock runs up to a full poll interval ahead of the truth
+  // and lurches backwards every time a fresh poll lands.
+  //
+  // Computed before the early return so the hooks below stay unconditional.
+  const remainingMs = anchor.days == null || !Number.isFinite(anchor.days)
+    ? Infinity
+    : runwayRemainingMs(anchor.days, anchor.ageMs, Date.now() - anchor.at);
+  const close = Number.isFinite(remainingMs) && remainingMs < CLOCK_BELOW_MS;
+
   useEffect(() => {
+    // No timer at all in the ordinary case. The parent re-renders this on every
+    // 30s poll, which is both enough to keep a day count current and enough to
+    // notice the 48h crossing — so ticking at 1Hz for months would be pure
+    // waste, not accuracy.
+    if (!close) return;
     const t = setInterval(() => tick((n) => n + 1), 1000);
     return () => clearInterval(t);
-  }, []);
+  }, [close]);
 
   // No burn means nothing is being consumed, so there is no clock to run.
   // `== null` rather than isFinite(): the global isFinite coerces null to 0 and
@@ -231,19 +269,36 @@ function Runway({ days, sev, ageMs }: { days: number | null; sev: string; ageMs:
     return <div className={`hero-value ${sev}`}>∞<span className="hero-unit">days</span></div>;
   }
 
-  // Two subtractions, because the figure was already stale when it arrived.
-  // /state serves a cached poll, so `ageMs` is how long the SERVER says it has
-  // been running (server clock, immune to a wrong browser clock), and the
-  // second term is how long it has been since this tab received it. Without
-  // the first, the clock runs up to a full poll interval ahead of the truth
-  // and lurches backwards every time a fresh poll lands.
-  const { days: d, clock, done } = countdown(
-    runwayRemainingMs(anchor.days, anchor.ageMs, Date.now() - anchor.at),
-  );
+  const title = 'Wallet plus the value already paid into the batches, divided by the burn rate. '
+    + 'The committed part drains every block, so this falls at one second per second. It jumps up '
+    + 'when you deposit or buy, and moves if the chain price changes.';
+
+  const { days: d, clock, done } = countdown(remainingMs);
+
+  // Far out: the day count is the whole reading.
+  if (!close) {
+    return (
+      <div className={`hero-value ${sev}`} title={title}>
+        {d.toLocaleString()}
+        <span className="hero-unit">{d === 1 ? 'day' : 'days'}</span>
+      </div>
+    );
+  }
+
+  // Inside a day the day count is a zero taking up the largest glyph on the
+  // page, so the clock becomes the headline instead of sitting beside one.
+  if (d === 0) {
+    return (
+      <div className={`hero-value is-clock ${sev}`} title={title}>
+        {clock}
+        {done && <span className="hero-unit">spent</span>}
+      </div>
+    );
+  }
+
   return (
-    <div className={`hero-value ${sev}`}
-      title="Wallet plus the value already paid into the batches, divided by the burn rate. The committed part drains every block, so this falls at one second per second. It jumps up when you deposit or buy, and moves if the chain price changes.">
-      {done ? '0' : d.toLocaleString()}
+    <div className={`hero-value ${sev}`} title={title}>
+      {d.toLocaleString()}
       <span className="hero-unit">d</span>
       <span className="hero-clock">{clock}</span>
     </div>
