@@ -65,7 +65,13 @@ export function diluteTriggerFor(depth: number, configured: number): number {
   // That is reactive rather than predictive, and deliberately so: on a mutable
   // batch a full bucket costs one recycled chunk, which is a far smaller harm
   // than repeatedly halving the life of a batch that had plenty of room.
-  // Immutable batches never reach here — they are excluded earlier.
+  // NOTE: immutable batches DO reach here. They were excluded once, on a false
+  // premise the source disproves (see evaluateOne below), and the exclusion is
+  // gone — but this rationale was written under it and the trade is worse for
+  // them: a full bucket on an immutable batch refuses every upload rather than
+  // recycling one chunk. Shallow immutable batches are therefore rescued after
+  // they break rather than before. Deep ones are unaffected: they reach the
+  // one-slot rule long before a bucket fills.
   const MIN_BUCKET_FOR_EARLY_TRIGGER = 8; // depth 19+
 
   if (bucketUpperBound < MIN_BUCKET_FOR_EARLY_TRIGGER) return 1;

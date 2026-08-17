@@ -57,6 +57,61 @@ so expensive that the wallet only ever buys a couple of months. Depth can be
 *increased* (dilute) but never reduced, so right-sizing means a new batch and a
 re-upload. The wizard exists to make that trade visible before you commit to it.
 
+## Dilution
+
+Dilution is the only way to add capacity to a batch that exists: raise the depth
+by one and it rents twice as many chunks. Depth only ever goes up.
+
+It is not free, and the price is not paid in xBZZ. **Diluting halves the
+remaining life.** The amount already deposited is per-chunk, so spreading it
+over twice as many chunks buys half as long:
+
+| | before | after dilute to 19 |
+|---|---|---|
+| capacity | 1.07 GB | 2.15 GB |
+| remaining life | 9.1 d | **4.6 d** |
+
+That gives an ordering rule with real money behind it: **dilute first, top up
+second.** Topping up to 60 days and then diluting throws away 30 of them. The
+planner enforces this — a dilute plan carries the follow-up top-up with it and
+computes the cost from the *post-dilution* depth, so what the caps check is what
+will actually be spent.
+
+### When it happens on its own
+
+With `diluteEnabled`, a managed batch dilutes when its fullest bucket crosses the
+threshold — the default 80%, *or* "one slot left", whichever comes first. The
+second clause exists because `utilizationRatio` is `maxCollisions / 2^(depth-16)`
+and so is quantised: at depth 17 the only possible values are 0, 0.5 and 1. A
+fixed 0.8 is unreachable there until the ratio is exactly 1.0, by which point a
+bucket is already full and the guard has fired after the damage.
+
+Below depth 19 even that is too eager — with two slots per bucket, a batch
+holding a single chunk already reads 0.5, and walking 17→22 would halve the
+remaining life five times and pay for five restoring top-ups on a batch that was
+essentially empty. So shallow batches trigger only once a bucket is genuinely
+full. That is reactive by design: on a *mutable* batch a full bucket costs one
+recycled chunk, which is far cheaper than repeatedly halving a batch's life.
+
+> On a shallow **immutable** batch that trade does not hold — a full bucket
+> there means the batch refuses every upload, so auto-dilute rescues it rather
+> than pre-empting it. Deep immutable batches are fine; they hit the one-slot
+> rule long before anything fills.
+
+`maxAutoDiluteDepth` (default 24) bounds this: each step doubles what the batch
+costs per day, so an unbounded rule would answer "this batch is full" by making
+it permanently expensive.
+
+### Doing it by hand
+
+Any batch can be diluted from its page, managed or not, and immutability is no
+obstacle — verified against Bee's `DiluteBatch`, which checks only that depth
+increases, and the on-chain `increaseDepth`, which never reads `immutableFlag`.
+For an immutable batch that has filled a bucket this is the *only* repair.
+
+The preview shows the new depth, the new capacity, the halved life and what
+restoring it to target would cost, before anything is signed.
+
 ## Sizing
 
 Duration is `price x blocks`, priced from the chain. It cannot be derived from a
