@@ -8,6 +8,12 @@ storer reserves and the data is gone. This watches the batches, tops them up
 within hard spend caps, and gives dapps an API to upload through so the Bee node
 itself never has to face the internet.
 
+![The dashboard, a batch page, the bucket map and settings](docs/screenshots/tour.gif)
+
+*Overview, a batch, its 65,536 buckets as a map, and the settings. Rendered from
+the real build against representative data — the figures, addresses and batch IDs
+above are invented, not a live node's.*
+
 ## The thing worth understanding
 
 A batch is charged for **reserved capacity, not stored data**. At depth `d` you
