@@ -26,7 +26,7 @@ import { authenticate, sha256Hex, safeEqual } from './auth';
 import { checkQuota, limitsFor } from './quota';
 import { burnRate, quote, depthLadder, recommendDepth, reviewQuote, formatBytes, MIN_DEPTH, MAX_DEPTH } from './wizard';
 import { plurToBzz, bzzToPlur, storedBytes, capacityBytes, costPlur, amountForDuration } from './math';
-import { checkCaps, policyFor } from './evaluate';
+import { checkCaps, policyFor, fullnessOf, fullnessMessage, type Fullness } from './evaluate';
 import type { Config } from './config';
 import { PriceFeed } from './price';
 import { buildGrid, bucketPressure } from './buckets';
@@ -45,6 +45,53 @@ export interface ServerDeps {
 
 /** bigint is not JSON-serialisable; render as string to preserve exactness. */
 const json = (v: unknown) => JSON.parse(JSON.stringify(v, (_k, x) => (typeof x === 'bigint' ? x.toString() : x)));
+
+
+/**
+ * After a write, re-read the batch and report what room is left.
+ *
+ * An upload is the ONLY thing that consumes bucket space, so fullness is
+ * write-driven and does not belong on a timer. Waiting for the 5-minute poll
+ * meant an immutable batch could sit full for minutes, refusing uploads, with
+ * nothing saying why. One cheap `/stamps/{id}` read closes that window.
+ *
+ * Never throws and never fails the upload: the bytes are already stamped and
+ * paid for by the time this runs. A failed refresh costs a late warning, not
+ * a lost file.
+ */
+async function fullnessAfterUpload(
+  deps: { poller: any; db: any; alerter: any; cfg: any },
+  batchId: string,
+): Promise<{ fullness: Fullness; message: string | null }> {
+  try {
+    await deps.poller.refreshBatch(batchId);
+    const b = deps.poller.last?.batches.find((x: any) => x.batchID === batchId);
+    if (!b) return { fullness: 'ok', message: null };
+
+    // Same source the poller uses (there is no single-batch accessor), so a
+    // per-batch dilute override is honoured here exactly as it is on a tick.
+    const row = deps.db.batches().find((r: any) => r.batchId === batchId);
+    const p = policyFor(deps.cfg, row ? {
+      topupBelowDays: row.topupBelowDays,
+      topupTargetDays: row.topupTargetDays,
+      diluteAbove: row.diluteAbove,
+      maxDiluteDepth: row.maxDiluteDepth,
+    } : null);
+    const fullness = fullnessOf(b, p.diluteWhenUtilizationAbove);
+    const message = fullnessMessage(b, fullness);
+
+    if (fullness === 'full' && message) {
+      // Deduped by the alerter's cooldown, so a busy batch does not spam.
+      await deps.alerter.send({
+        event: 'batch_full', level: 'warn', batchId, message,
+        details: { utilizationRatio: b.utilizationRatio, depth: b.depth, immutable: b.immutableFlag },
+      });
+    }
+    return { fullness, message };
+  } catch {
+    return { fullness: 'ok', message: null };
+  }
+}
 
 export function createServer(deps: ServerDeps) {
   const { cfg, bee, db, alerter, poller, adminToken } = deps;
@@ -342,7 +389,8 @@ export function createServer(deps: ServerDeps) {
               name,
               contentType: request.headers.get('content-type') ?? undefined,
             });
-            return json({ reference, bytes: bytes.byteLength, name: name ?? null });
+            const room = await fullnessAfterUpload({ poller, db, alerter, cfg }, params.id);
+            return json({ reference, bytes: bytes.byteLength, name: name ?? null, ...room });
           } catch (e: any) {
             set.status = 502;
             return { error: e?.message ?? String(e) };
@@ -852,7 +900,8 @@ export function createServer(deps: ServerDeps) {
           contentType: (headers['x-content-type'] as string) || undefined,
         });
         db.setAppReference(app.name, reference);
-        return json({ reference, bytes: bytes.byteLength, remaining: verdict.remaining });
+        const room = await fullnessAfterUpload({ poller, db, alerter, cfg }, app.batchId!);
+        return json({ reference, bytes: bytes.byteLength, remaining: verdict.remaining, ...room });
       } catch (e: any) {
         set.status = 502;
         return { error: `upload failed: ${e?.message ?? e}` };

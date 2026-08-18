@@ -179,7 +179,11 @@ export async function fetchContent(reference: string): Promise<string> {
 
 /** Upload a file straight to one batch. Consumes capacity and publishes. */
 export const uploadToBatch = (id: string, file: File) =>
-  req<{ reference: string; bytes: number; name: string | null }>(
+  req<{
+    reference: string; bytes: number; name: string | null;
+    /** Room left in the batch, judged immediately after this write. */
+    fullness: 'ok' | 'nearing' | 'full'; message: string | null;
+  }>(
     `/batches/${id}/upload?name=${encodeURIComponent(file.name)}`,
     { method: 'POST', body: file, headers: { 'content-type': file.type || 'application/octet-stream' } },
   );

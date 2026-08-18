@@ -34,7 +34,8 @@ export function BatchDetail({ batchId, state, onChange }: {
   const [panelHidden, setPanelHidden] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploaded, setUploaded] = useState<
-    { name: string; bytes: number; reference: string; newChunks: number } | null>(null);
+    { name: string; bytes: number; reference: string; newChunks: number;
+      fullness: 'ok' | 'nearing' | 'full'; message: string | null } | null>(null);
   const [uploads, setUploads] = useState<Upload[]>([]);
   const filePick = useRef<HTMLInputElement>(null);
 
@@ -90,6 +91,7 @@ export function BatchDetail({ batchId, state, onChange }: {
       setUploaded({
         name: file.name, bytes: r.bytes, reference: r.reference,
         newChunks: Math.max(0, after.totalChunks - before),
+        fullness: r.fullness, message: r.message,
       });
     } catch (e: any) {
       setErr(e.message);
@@ -224,6 +226,15 @@ export function BatchDetail({ batchId, state, onChange }: {
                 ? ', and this batch is immutable, so those bucket slots are gone for its lifetime.'
                 : '.'}
             </p>
+
+            {/* The upload is checked for room the moment it lands, not on the
+                next poll — so a batch that just sealed says so here rather
+                than silently refusing the NEXT upload minutes later. */}
+            {uploaded?.message && (
+              <div className={`warn${uploaded.fullness === 'full' ? ' err' : ''}`}>
+                {uploaded.message}
+              </div>
+            )}
 
             {uploaded && (
               <div className="warn" style={{ borderLeftColor: 'var(--good)', background: 'transparent' }}>

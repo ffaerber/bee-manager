@@ -19,6 +19,7 @@ export type AlertEvent =
   | 'batch_bought'
   | 'wallet_low'
   | 'chequebook_low'
+  | 'batch_full'
   | 'quota_exceeded'
   | 'node_unreachable';
 

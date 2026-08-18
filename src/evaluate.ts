@@ -80,6 +80,40 @@ export function diluteTriggerFor(depth: number, configured: number): number {
   return Math.min(configured, oneSlotLeft);
 }
 
+/**
+ * How much room a batch has left, judged straight after a write.
+ *
+ * Read from `utilizationRatio`, which is the fullest bucket over
+ * `bucketUpperBound`. That figure is a terrible estimate of bytes STORED — it
+ * overstated the live node by 570x — but it is not an estimate of fullness, it
+ * IS fullness, and it costs one cheap `/stamps/{id}` read rather than the
+ * 65,536-entry bucket report.
+ *
+ * `full` means the fullest bucket is at capacity. On an immutable batch that
+ * is a hard stop: every subsequent upload is refused. On a mutable one it is
+ * the onset of silent recycling. Either way the next write is the one that
+ * suffers, which is why this is evaluated after a write rather than on a timer.
+ */
+export type Fullness = 'ok' | 'nearing' | 'full';
+
+export function fullnessOf(batch: Batch, configuredDiluteAbove: number): Fullness {
+  if (batch.utilizationRatio >= 1) return 'full';
+  if (batch.utilizationRatio >= diluteTriggerFor(batch.depth, configuredDiluteAbove)) return 'nearing';
+  return 'ok';
+}
+
+/** What to tell the uploader, and whether it is worth interrupting them. */
+export function fullnessMessage(batch: Batch, f: Fullness): string | null {
+  if (f === 'ok') return null;
+  const where = `batch ${batch.label || batch.batchID.slice(0, 8)}`;
+  if (f === 'full') {
+    return batch.immutableFlag
+      ? `${where} is full — its fullest bucket is at capacity and it is immutable, so it will refuse every further upload. Dilute it to accept writes again.`
+      : `${where} is full — its fullest bucket is at capacity, so further uploads landing there silently recycle its oldest chunks. Dilute it to stop the loss.`;
+  }
+  return `${where} is nearly full — its fullest bucket is one slot from capacity.`;
+}
+
 export function checkCaps(cost: bigint, ctx: EvalContext): CapVerdict {
   const { config: c, wallet } = ctx;
   const bzz = (p: bigint) => plurToBzz(p).toFixed(4);
