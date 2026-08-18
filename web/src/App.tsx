@@ -374,7 +374,20 @@ function Batches({ state, onChange }: { state: State; onChange: () => void }) {
           <table>
             <thead>
               <tr>
-                <th>Batch</th><th>Remaining life</th><th>Capacity used</th>
+                <th>
+                  {/* The key sits in the header rather than a separate legend:
+                      it is two shapes, and this is the only place they appear
+                      in a list long enough to need scanning. */}
+                  <span className="row" style={{ gap: 10, flexWrap: 'nowrap' }}>
+                    <span>Batch</span>
+                    <span className="row" style={{ gap: 5, flexWrap: 'nowrap', textTransform: 'none', letterSpacing: 0 }}>
+                      <BatchKind immutable={false} /> mutable
+                    </span>
+                    <span className="row" style={{ gap: 5, flexWrap: 'nowrap', textTransform: 'none', letterSpacing: 0 }}>
+                      <BatchKind immutable /> immutable
+                    </span>
+                  </span>
+                </th><th>Remaining life</th><th>Capacity used</th>
               </tr>
             </thead>
             <tbody>
@@ -434,6 +447,27 @@ function Plans({ plans, batches }: { plans: State['plans']; batches: Batch[] }) 
   );
 }
 
+/**
+ * Mutable or immutable, as a shape.
+ *
+ * Never shape alone: the word is always beside it — in the row's sub-line, and
+ * in the title for anyone hovering or using a screen reader. The shape is what
+ * makes a list of batches scannable; the word is what makes it unambiguous.
+ */
+export function BatchKind({ immutable }: { immutable: boolean }) {
+  const label = immutable
+    ? 'immutable — a full bucket ends this batch; it refuses further uploads until diluted'
+    : 'mutable — a full bucket recycles this batch\'s oldest chunks instead of refusing';
+  return (
+    <span
+      className={`kind ${immutable ? 'is-immutable' : 'is-mutable'}`}
+      role="img"
+      aria-label={immutable ? 'immutable batch' : 'mutable batch'}
+      title={label}
+    />
+  );
+}
+
 function BatchRow({ b, threshold }: { b: Batch; threshold: number }) {
   const sev = ttlSeverity(b.ttlDays, threshold);
   const to = `/batch/${b.batchID}`;
@@ -467,13 +501,15 @@ function BatchRow({ b, threshold }: { b: Batch; threshold: number }) {
           list for spotting the batch that needs attention, and everything else
           was detail you can only act on once you are there. */}
       <td>
-        <a className="rowlink" {...link(to)} style={{ fontWeight: 600 }}>
-          {b.label || `${b.batchID.slice(0, 10)}…`}
-        </a>
+        <span className="row" style={{ gap: 8, flexWrap: 'nowrap' }}>
+          <BatchKind immutable={b.immutableFlag} />
+          <a className="rowlink" {...link(to)} style={{ fontWeight: 600 }}>
+            {b.label || `${b.batchID.slice(0, 10)}…`}
+          </a>
+        </span>
         <div className="tile-sub">
-          depth {b.depth} · {b.capacityHuman}
+          depth {b.depth} · {b.capacityHuman} · {b.immutableFlag ? 'immutable' : 'mutable'}
           {!b.managed && ' · unmanaged'}
-          {b.immutableFlag && ' · immutable'}
           {!b.usable && ' · unusable'}
         </div>
       </td>

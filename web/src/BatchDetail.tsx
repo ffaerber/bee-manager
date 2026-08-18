@@ -17,6 +17,7 @@ import { decodeGrid } from './mapColors';
 import { MapCanvas, type Hover } from './MapCanvas';
 import { RangeSlider } from './RangeSlider';
 import { link } from './router';
+import { BatchKind } from './App';
 import { expiryDate, fmtBytes, fmtDays, ttlSeverity, depthCapacity } from './format';
 
 /** Buckets are re-read on this cadence so a screen left open stays current. */
@@ -396,8 +397,9 @@ function BatchFacts({ b, state, onChange }: {
 
         <div>
           <div className="tile-label">Flags</div>
-          <div style={{ fontSize: 14, marginTop: 4 }}>
-            {b.immutableFlag ? 'immutable' : 'mutable'}{b.usable ? '' : ' · unusable'}
+          <div className="row" style={{ fontSize: 14, marginTop: 4, gap: 8, flexWrap: 'nowrap' }}>
+            <BatchKind immutable={b.immutableFlag} />
+            <span>{b.immutableFlag ? 'immutable' : 'mutable'}{b.usable ? '' : ' · unusable'}</span>
           </div>
           <div className="tile-sub">
             {b.immutableFlag

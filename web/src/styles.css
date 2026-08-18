@@ -344,6 +344,28 @@ tr:last-child td { border-bottom: none; }
 .meter.warning > i { background: var(--warning); box-shadow: 0 0 10px rgba(250, 178, 25, 0.8); }
 .meter.critical > i { background: var(--critical); box-shadow: 0 0 10px rgba(236, 48, 19, 0.8); }
 
+/* ── batch kind ──────────────────────────────────────────────────────────
+   Shape, not colour. Immutable is not a better batch than mutable — it is a
+   different trade — so encoding it as good/bad would assert something untrue.
+   Shape carries kind; the meters beside it already carry severity.
+
+   The mapping is meant to be readable without the legend: a circle goes
+   round, which is what a mutable batch does with a full bucket (it recycles
+   its oldest chunk). A block is sealed, which is what an immutable one is —
+   a full bucket ends it, and those slots are gone for the batch's life.
+
+   In a theme where nothing else is rounded, the circle reads instantly. */
+.kind {
+  display: inline-block; flex: none;
+  width: 9px; height: 9px;
+  background: var(--text-secondary);
+  vertical-align: middle;
+}
+.kind.is-mutable { border-radius: 50%; }
+/* Immutable stays square, and slightly brighter: it is the permanent one, and
+   the default this service buys. */
+.kind.is-immutable { background: var(--text-primary); }
+
 /* ── status pill ─────────────────────────────────────────────────────────
    A bordered, tracked, uppercase chip carrying its own colour — legible as a
    state at a glance, and never colour-alone: the word inside says the same
