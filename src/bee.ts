@@ -376,11 +376,32 @@ export class BeeClient {
   }
 }
 
+/**
+ * Fullest-bucket occupancy as a fraction, derived when Bee does not send it.
+ *
+ * `utilizationRatio` is absent on some Bee versions — present on 2.8.1, missing
+ * on 2.8.0 — and `?? 0` silently reported every batch as empty. That is the
+ * worst possible default here: 0 means "plenty of room", so fullness detection,
+ * batch_full and the dilute trigger all go quiet on exactly the batches that
+ * need them. Found by deploying against a second node running 2.8.0.
+ *
+ * The figure is just maxCollisions over the per-bucket bound, and both parts
+ * are in the same payload, so it never needs to be missing.
+ */
+export function __ratioOf(d: any): number { return ratioOf(d); }
+
+function ratioOf(d: any): number {
+  if (typeof d.utilizationRatio === 'number') return d.utilizationRatio;
+  const bound = Math.pow(2, Math.max(0, d.depth - d.bucketDepth));
+  if (!bound || typeof d.utilization !== 'number') return 0;
+  return d.utilization / bound;
+}
+
 function toBatch(d: any): Batch {
   return {
     batchID: d.batchID,
     utilization: d.utilization,
-    utilizationRatio: d.utilizationRatio ?? 0,
+    utilizationRatio: ratioOf(d),
     usable: d.usable,
     label: d.label ?? '',
     depth: d.depth,
