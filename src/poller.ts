@@ -28,6 +28,15 @@ import type { Config } from './config';
  */
 const CHEQUEBOOK_RATE_WINDOW_MS = 3_600_000;
 
+/**
+ * How long an action may sit `submitted` before the in-flight lock is released.
+ *
+ * Long enough that a genuinely pending transaction is never released early —
+ * Gnosis blocks are ~5s, so half an hour is two orders of magnitude of slack —
+ * and short enough that a stranded row cannot quietly cost a batch its life.
+ */
+const STALE_INFLIGHT_MS = 30 * 60_000;
+
 export interface PollResult {
   ok: boolean;
   batches: Batch[];
@@ -273,6 +282,19 @@ export class Poller {
         maxDiluteDepth: b.maxDiluteDepth,
       }])),
     };
+    // Release anything stranded in-flight before planning, or a batch stays
+    // locked out for good. Recorded as `failed` rather than deleted: the ledger
+    // is the audit trail for money, and "we submitted this and never saw it
+    // land" is a fact worth keeping.
+    for (const a of this.db.staleSubmitted(STALE_INFLIGHT_MS, now)) {
+      this.db.updateActionStatus(a.id, 'failed', `never confirmed; released after ${STALE_INFLIGHT_MS / 60_000} min`);
+      await this.alerter.send({
+        event: 'topup_failed', level: 'warn', batchId: a.batch_id ?? undefined,
+        message: `A ${a.kind} submitted ${Math.round((now - a.ts) / 60_000)} min ago was never confirmed. ` +
+                 `Released so the batch can be acted on again — check whether it landed before assuming it did not.`,
+      });
+    }
+
     const plans = evaluateAll(managedBatches, ctx);
     for (const plan of plans) await this.handle(plan, batches);
 
@@ -408,15 +430,35 @@ export class Poller {
     try {
       if (plan.kind === 'dilute') {
         await this.bee.dilute(plan.batchId, plan.newDepth);
+        // Closed the moment the dilute lands, BEFORE the follow-up top-up.
+        //
+        // These are two transactions, and the second failing used to leave the
+        // first one's row `submitted` forever — which is what inFlightBatchIds()
+        // reads, so the batch was locked out of the planner permanently. It
+        // could then be neither topped up nor diluted again, and would quietly
+        // run to expiry. Observed on t4t-v3: a dilute landed, the top-up did
+        // not, and the batch sat blocked for hours with 24 days of life left
+        // and no way to renew it.
+        this.db.updateActionStatus(id, 'confirmed');
         await this.alerter.send({
           event: 'dilute_executed', level: 'info', batchId: plan.batchId,
           message: `Diluted to depth ${plan.newDepth}: ${plan.reason}`,
         });
-        if (plan.thenTopup > 0n) await this.bee.topUp(plan.batchId, plan.thenTopup);
+        if (plan.thenTopup > 0n) {
+          // Its own row, so its own failure is recorded against itself and
+          // cannot strand the dilute that already succeeded.
+          const topupId = this.db.recordAction({
+            batchId: plan.batchId, appName: batch?.label ?? null, kind: 'topup',
+            amount: plan.thenTopup, cost: plan.cost, status: 'submitted',
+            reason: `restoring TTL after dilute to depth ${plan.newDepth}`, error: null,
+          });
+          await this.bee.topUp(plan.batchId, plan.thenTopup);
+          this.db.updateActionStatus(topupId, 'confirmed');
+        }
       } else {
         await this.bee.topUp(plan.batchId, plan.amountPerChunk);
+        this.db.updateActionStatus(id, 'confirmed');
       }
-      this.db.updateActionStatus(id, 'confirmed');
       await this.alerter.send({
         event: 'topup_executed', level: 'info', batchId: plan.batchId,
         costBzz: plurToBzz(plan.cost),

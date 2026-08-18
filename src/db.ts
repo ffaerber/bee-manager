@@ -408,6 +408,28 @@ export class Db {
     return rows.reduce((sum, r) => sum + BigInt(r.cost), 0n);
   }
 
+  /**
+   * Actions still `submitted` well past any plausible confirmation time.
+   *
+   * `submitted` is written before the Bee call and cleared after it, so it is
+   * both the crash-safety record and the in-flight lock. A composite operation
+   * that half-succeeded used to leave one stranded forever, and because
+   * inFlightBatchIds() reads exactly this status, the batch was then locked out
+   * of the planner permanently — it could be neither topped up nor diluted, and
+   * would run silently to expiry.
+   *
+   * The bound is generous on purpose. Gnosis produces a block every ~5s, so a
+   * transaction that has not been observed after half an hour is not slow, it
+   * is gone. Releasing earlier would risk buying the same thing twice, which is
+   * the exact failure the lock exists to prevent.
+   */
+  staleSubmitted(olderThanMs: number, now = Date.now()) {
+    return this.db.query(
+      `SELECT id, batch_id, kind, ts FROM actions
+       WHERE status = 'submitted' AND ts < ?`,
+    ).all(now - olderThanMs) as { id: number; batch_id: string | null; kind: string; ts: number }[];
+  }
+
   /** Batches with a submitted-but-unconfirmed action. */
   inFlightBatchIds(): Set<string> {
     const rows = this.db.query(
