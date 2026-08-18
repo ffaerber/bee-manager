@@ -357,47 +357,111 @@ function Tile({ label, value, unit, sub, fiat }: {
   );
 }
 
+/** Remembered across reloads: a list you chose to fold should stay folded. */
+function useSticky(key: string, initial: boolean) {
+  const [v, setV] = useState<boolean>(() => {
+    try { const raw = localStorage.getItem(key); return raw === null ? initial : raw === '1'; }
+    catch { return initial; }
+  });
+  const set = (next: boolean) => {
+    setV(next);
+    try { localStorage.setItem(key, next ? '1' : '0'); } catch { /* private mode */ }
+  };
+  return [v, set] as const;
+}
+
+/** The batch table, minus its heading — used once per section. */
+function BatchTable({ rows, threshold }: { rows: Batch[]; threshold: number }) {
+  return (
+    <div className="scroll-x">
+      <table>
+        <thead>
+          <tr><th>Batch</th><th>Remaining life</th><th>Capacity used</th></tr>
+        </thead>
+        <tbody>
+          {rows.map((b) => <BatchRow key={b.batchID} b={b} threshold={threshold} />)}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function Batches({ state, onChange }: { state: State; onChange: () => void }) {
   const threshold = state.config.topupWhenTtlBelowDays;
   // Buying lives here rather than in its own panel: a new batch is a row in
   // this table, so the action belongs next to the thing it changes.
   const [creating, setCreating] = useState(false);
+  const [hideUnmanaged, setHideUnmanaged] = useSticky('ssm.hideUnmanaged', false);
+
+  const managed = state.batches.filter((b) => b.managed);
+  const unmanaged = state.batches.filter((b) => !b.managed);
+
+  /**
+   * The soonest an unmanaged batch expires, kept visible even when the list is
+   * folded away.
+   *
+   * Unmanaged means nothing renews it AND nothing alerts on it, so a hidden
+   * list would be the only place its expiry was ever shown. Folding is meant
+   * to remove noise, not to remove the one fact that still matters.
+   */
+  const soonest = unmanaged.length
+    ? unmanaged.reduce((a, b) => (b.ttlDays < a.ttlDays ? b : a))
+    : null;
+  const soonestSev = soonest ? ttlSeverity(soonest.ttlDays, threshold) : 'good';
+
   return (
     <div className="card">
       <div className="spread" style={{ marginBottom: 12 }}>
         <h2>Batches</h2>
-        <button className="primary" onClick={() => setCreating(true)}>Create batch</button>
+        <div className="row" style={{ gap: 16 }}>
+          {/* One key for both tables, so it is not repeated per section. */}
+          <span className="row muted" style={{ gap: 12, flexWrap: 'nowrap', fontSize: 12 }}>
+            <span className="row" style={{ gap: 5, flexWrap: 'nowrap' }}><BatchKind immutable={false} /> mutable</span>
+            <span className="row" style={{ gap: 5, flexWrap: 'nowrap' }}><BatchKind immutable /> immutable</span>
+          </span>
+          <button className="primary" onClick={() => setCreating(true)}>Create batch</button>
+        </div>
       </div>
+
       {state.batches.length === 0 && <p className="muted">No batches on the node.</p>}
-      {state.batches.length > 0 && (
-        <div className="scroll-x">
-          <table>
-            <thead>
-              <tr>
-                <th>
-                  {/* The key sits in the header rather than a separate legend:
-                      it is two shapes, and this is the only place they appear
-                      in a list long enough to need scanning. */}
-                  <span className="row" style={{ gap: 10, flexWrap: 'nowrap' }}>
-                    <span>Batch</span>
-                    <span className="row" style={{ gap: 5, flexWrap: 'nowrap', textTransform: 'none', letterSpacing: 0 }}>
-                      <BatchKind immutable={false} /> mutable
-                    </span>
-                    <span className="row" style={{ gap: 5, flexWrap: 'nowrap', textTransform: 'none', letterSpacing: 0 }}>
-                      <BatchKind immutable /> immutable
-                    </span>
-                  </span>
-                </th><th>Remaining life</th><th>Capacity used</th>
-              </tr>
-            </thead>
-            <tbody>
-              {state.batches.map((b) => (
-                <BatchRow key={b.batchID} b={b} threshold={threshold} />
-              ))}
-            </tbody>
-          </table>
+
+      {managed.length > 0 && (
+        <>
+          <div className="tile-label" style={{ marginBottom: 6 }}>
+            Managed · {managed.length} — topped up automatically, within the caps
+          </div>
+          <BatchTable rows={managed} threshold={threshold} />
+        </>
+      )}
+
+      {unmanaged.length > 0 && (
+        <div style={{ marginTop: managed.length ? 22 : 0 }}>
+          <div className="spread" style={{ marginBottom: 6 }}>
+            <span className="tile-label">
+              Unmanaged · {unmanaged.length} — nothing renews these, and nothing alerts on them
+            </span>
+            <button onClick={() => setHideUnmanaged(!hideUnmanaged)} style={{ padding: '4px 10px', fontSize: 12 }}>
+              {hideUnmanaged ? 'Show' : 'Hide'}
+            </button>
+          </div>
+          {hideUnmanaged ? (
+            <p className="tile-sub" style={{ marginTop: 0 }}>
+              Hidden.{' '}
+              {soonest && (
+                <>
+                  Soonest to expire is <strong>{soonest.label || soonest.batchID.slice(0, 10)}</strong>
+                  {' '}in <strong style={{ color: soonestSev === 'good' ? undefined : `var(--${soonestSev})` }}>
+                    {fmtDays(soonest.ttlDays)}
+                  </strong>.
+                </>
+              )}
+            </p>
+          ) : (
+            <BatchTable rows={unmanaged} threshold={threshold} />
+          )}
         </div>
       )}
+
       {/* Deliberately not closed by onChange: after a purchase the wizard shows
           which batch it bought and what it cost, and that is the receipt. The
           table behind refreshes; the user closes when they have read it. */}
