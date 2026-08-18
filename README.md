@@ -102,6 +102,13 @@ recycled chunk, which is far cheaper than repeatedly halving a batch's life.
 costs per day, so an unbounded rule would answer "this batch is full" by making
 it permanently expensive.
 
+> **If a batch is registered with an on-chain volume registry, do not dilute
+> it.** [`swarm-volume-registry`](https://github.com/shtukaresearch/swarm-volume-registry)
+> treats depth as immutable and retires a volume permanently the moment it sees
+> `depth != volume.depth` — its keepers then stop funding the batch and it dies
+> quietly. Set `diluteEnabled=false`, or pin that batch's `maxAutoDiluteDepth`
+> to its current depth. See [Related work](#related-work).
+
 ### Doing it by hand
 
 Any batch can be diluted from its page, managed or not, and immutability is no
@@ -284,6 +291,52 @@ managed — the two are deliberately independent, because a rename quietly
 altering spending behaviour is the kind of coupling that surprises you later.
 Note that anything discovering batches by label (t4t's own manager matches
 `T4T_STAMP_LABEL`) will stop finding a batch you rename.
+
+## Related work
+
+[`shtukaresearch/swarm-volume-registry`](https://github.com/shtukaresearch/swarm-volume-registry)
+solves an overlapping problem on-chain: a Solidity contract holding *volume*
+records, topped up by a permissionless keeper. Shtuka Research is an external
+research contributor to the Swarm Foundation, and the design work is careful —
+§10.1 bounds the worst-case runway shortfall against `PriceOracle`'s maximum
+permitted price growth and lands on 0.9567, i.e. a promised 24 h is never worse
+than ~22.95 h.
+
+It is worth understanding what that contract does and does not remove. **It does
+not remove the loop.** Nothing on a blockchain is self-executing; `trigger()`
+does nothing until someone sends a transaction. What moves on-chain is the
+*policy*, and with it the trust the loop needs:
+
+| | this service | volume registry |
+|---|---|---|
+| the loop | in-process `setInterval` | off-chain keeper calls `trigger()` |
+| decides the amount | here, in `evaluate.ts` | the contract |
+| loop holds | admin token, wallet keys | **xDAI for gas, nothing else** |
+| who may run it | whoever holds the token | **anyone** |
+| target runway | 60 d, acts below 14 d | ~24 h every cycle |
+| if the loop stops | weeks of slack | batch dies within a day |
+| **dilution** | **supported** | **retires the volume** |
+
+The registry's real gain is a two-role split this service has no answer to: a
+*payer* wallet authorises the contract as an ERC20 spender, so a treasury can
+fund someone else's storage under a bounded, purpose-limited mandate. There is
+no way to do that with an off-chain script — funding a script means handing it a
+private key, and then it can do anything.
+
+The costs are the mirror image. A keeper earns nothing (§2 calls the role "gas
+boy"; the incentive layer is deferred in §13), so "anyone *may* run one" is not
+yet "someone *will*" — and at ~24 h of runway an unkept volume does not survive
+a quiet weekend. Depth is fixed for the reason given in §14: `increaseDepth`
+requires `msg.sender == batch.owner`, and the owner is the chunk-signer EOA
+rather than the contract, because contracts cannot sign chunks. The same choice
+that makes a batch uploadable locks the registry out of growing it.
+
+So the two are complementary in principle and mutually destructive on the same
+batch today: this service dilutes, and that contract retires anything whose
+depth moves.
+
+At the time of writing it is early — 9 commits, no releases, and **no licence
+file**, so the code is not reusable as-is.
 
 ## Running
 
