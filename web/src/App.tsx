@@ -571,11 +571,15 @@ function BatchRow({ b, threshold }: { b: Batch; threshold: number }) {
             {b.label || `${b.batchID.slice(0, 10)}…`}
           </a>
         </span>
-        <div className="tile-sub">
-          depth {b.depth} · {b.capacityHuman} · {b.immutableFlag ? 'immutable' : 'mutable'}
-          {!b.managed && ' · unmanaged'}
-          {!b.usable && ' · unusable'}
-        </div>
+        {/* Depth, capacity and the mutable/immutable word all left this line:
+            the shape marker carries the kind (with the key in the card header
+            and the word in its title), the section carries managed-ness, and
+            the rest is detail you can only act on from the batch page.
+
+            `unusable` stays. It is not routine detail — it means the node
+            cannot stamp with this batch at all, and it has no other home in
+            this list. */}
+        {!b.usable && <div className="tile-sub">unusable</div>}
       </td>
       <td>
         <div className="row" style={{ gap: 8, flexWrap: 'nowrap' }}>
