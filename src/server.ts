@@ -99,6 +99,21 @@ export function createServer(deps: ServerDeps) {
   // dashboard omits fiat, which is exactly the offline behaviour.
   const price$ = deps.price ?? new PriceFeed({ enabled: false });
 
+  /**
+   * The caps as they actually stand, env overlaid with the stored settings.
+   *
+   * Every spend path must read this and not `cfg`. The poller already did, but
+   * the manual top-up and the buy wizard used the raw env config, so a cap
+   * edited on the Settings page bound the daemon and not the two paths a human
+   * drives — the page told the truth about one caller and not the others.
+   *
+   * The direction that matters is tightening. Lowering a cap to hold something
+   * back would have kept showing the stricter number while still permitting the
+   * looser env value, which is the sort of guard that is only discovered to be
+   * decorative afterwards.
+   */
+  const effective = () => applySettings(cfg, db.settings());
+
   const app = new Elysia()
     .onError(({ error, set }) => {
       set.status = (error as any)?.status ?? 500;
@@ -463,7 +478,7 @@ export function createServer(deps: ServerDeps) {
           const perChunk = amountForDuration(r.chain.currentPrice, seconds, r.msPerBlock);
           const cost = costPlur(perChunk, b.depth);
           const verdict = checkCaps(cost, {
-            config: cfg, wallet: r.wallet, chain: r.chain,
+            config: effective(), wallet: r.wallet, chain: r.chain,
             spentLast24h: db.spentLast24h(), inFlight: db.inFlightBatchIds(), msPerBlock: r.msPerBlock,
           });
 
@@ -479,7 +494,7 @@ export function createServer(deps: ServerDeps) {
 
           if (!confirm) return json({ preview, confirmRequired: true });
           if (!verdict.allowed) { set.status = 403; return { error: `blocked by caps: ${verdict.reason}` }; }
-          if (cfg.dryRun) return json({ dryRun: true, wouldTopup: preview });
+          if (effective().dryRun) return json({ dryRun: true, wouldTopup: preview });
 
           const actionId = db.recordAction({
             batchId: params.id, appName: null, kind: 'topup',
@@ -775,11 +790,11 @@ export function createServer(deps: ServerDeps) {
           if (!confirm) return json({ preview: q, warnings, confirmRequired: true });
 
           const verdict = checkCaps(q.costPlur, {
-            config: cfg, wallet: r.wallet, chain: r.chain,
+            config: effective(), wallet: r.wallet, chain: r.chain,
             spentLast24h: db.spentLast24h(), inFlight: db.inFlightBatchIds(), msPerBlock: r.msPerBlock,
           });
           if (!verdict.allowed) { set.status = 403; return { error: `blocked by caps: ${verdict.reason}` }; }
-          if (cfg.dryRun) return json({ dryRun: true, wouldBuy: q });
+          if (effective().dryRun) return json({ dryRun: true, wouldBuy: q });
 
           const id = db.recordAction({
             batchId: null, appName: label ?? null, kind: 'buy',
