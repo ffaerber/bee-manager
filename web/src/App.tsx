@@ -696,11 +696,28 @@ function Wizard({ state, onDone }: { state: State; onDone: () => void }) {
           </div>
         </div>
         <div style={{ flex: '1 1 220px' }}>
-          <label className="field" htmlFor="days">Duration — {days} days</label>
-          <input id="days" type="range" min={7} max={365} step={1} value={days}
-            onChange={(e) => setDays(Number(e.target.value))} />
+          {/*
+            Runs to 3 years, not 1. A deploy batch — a static site that is
+            re-uploaded over the same stamps — wants the longest TTL it can
+            afford, because the only thing that ever kills it is running out
+            of time. Capping at 365 quietly made 2 years unbuyable here, so
+            the choice had to be made against the API instead of the UI.
+
+            Buying long is also a price hedge: postage is charged per chunk
+            per block at the CURRENT price, and that price has tripled. It
+            cuts both ways, and it is non-refundable, hence the year marks —
+            the jump from 1 to 3 years is a tripling of a sunk cost.
+          */}
+          <label className="field" htmlFor="days">
+            Duration — {days} days{days >= 365 ? ` · ${(days / 365).toFixed(1)} yr` : ''}
+          </label>
+          <input id="days" type="range" min={7} max={1095} step={1} value={days}
+            onChange={(e) => setDays(Number(e.target.value))} list="days-marks" />
+          <datalist id="days-marks">
+            <option value="365" /><option value="730" /><option value="1095" />
+          </datalist>
           <div className="row spread muted" style={{ fontSize: 11 }}>
-            <span>7 d</span><span>365 d</span>
+            <span>7 d</span><span>1 yr</span><span>2 yr</span><span>3 yr</span>
           </div>
         </div>
       </div>
