@@ -337,7 +337,7 @@ function BatchFacts({ b, state, onChange }: {
   // and make an accepted rename look rejected.
   useEffect(() => { if (!busy) setLabel(b.label); }, [b.label, busy]);
 
-  const threshold = state.config.topupWhenTtlBelowDays;
+  const threshold = state.config?.topupWhenTtlBelowDays ?? 0;
   const sev = ttlSeverity(b.ttlDays, threshold);
 
   async function save(patch: { label?: string; managed?: boolean }) {
@@ -504,6 +504,8 @@ function Policy({ b, state, onChange }: {
   return (
     <div className="card">
       <div className="spread" style={{ marginBottom: 10 }}>
+        <ApiKeys batchId={b.batchID} />
+
         <h2>Policy for this batch</h2>
         {saved && <span className="status good">saved</span>}
       </div>
@@ -1071,3 +1073,97 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
 }
 
 
+
+
+/**
+ * Upload credentials for one batch.
+ *
+ * Self-contained on purpose: it owns the only place the plaintext key exists
+ * in the browser, and that lifetime should end when this unmounts rather than
+ * being held in a parent that outlives the view.
+ *
+ * Hidden entirely from read-only visitors — not merely disabled. A control that
+ * looks available and 401s is worse than one that was never offered.
+ */
+function ApiKeys({ batchId }: { batchId: string }) {
+  const [keys, setKeys] = useState<api.ApiKey[]>([]);
+  const [name, setName] = useState('');
+  const [fresh, setFresh] = useState<{ name: string; key: string } | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    api.listKeys(batchId).then(setKeys).catch(() => { /* the page works without them */ });
+  }, [batchId]);
+  useEffect(() => { if (!api.isReadOnly()) load(); }, [load]);
+
+  if (api.isReadOnly()) return null;
+
+  return (
+    <>
+      <h2>Upload keys</h2>
+      {/* Scoped to THIS batch and nothing else: a key names its batch, and the
+          server ignores any batch id a caller supplies. That is what makes it
+          safe to paste into a GitHub repo — the worst a leaked key can do is
+          fill the batch it was already entitled to fill. */}
+      <p className="secondary" style={{ marginBottom: 12 }}>
+        For CI. Each key uploads to this batch only and can be revoked on its own — add a new
+        one, update the pipeline, then revoke the old.
+      </p>
+
+      {fresh && (
+        <div className="banner" style={{ marginBottom: 12 }}>
+          <div className="field">New key · {fresh.name}</div>
+          <code style={{ wordBreak: 'break-all', display: 'block', margin: '6px 0' }}>{fresh.key}</code>
+          <div className="row" style={{ gap: 8 }}>
+            <button type="button" onClick={() => navigator.clipboard?.writeText(fresh.key)}>Copy</button>
+            <button type="button" onClick={() => setFresh(null)}>Done</button>
+          </div>
+          <p className="muted" style={{ marginTop: 6 }}>
+            Only the hash is stored — this is the last time it can be shown. Lost keys are
+            reissued, not recovered.
+          </p>
+        </div>
+      )}
+
+      <form className="row" style={{ gap: 8, marginBottom: 12 }}
+        onSubmit={async (e) => {
+          e.preventDefault(); setErr(null);
+          try {
+            const k = await api.createKey(batchId, name.trim());
+            setFresh({ name: k.name, key: k.key }); setName(''); load();
+          } catch (er: any) { setErr(er.message); }
+        }}>
+        <input value={name} placeholder="name, e.g. pinkchainsaw-ci"
+          style={{ flex: 1, minWidth: 200 }}
+          onChange={(e) => setName(e.target.value)} />
+        <button className="primary" type="submit" disabled={!name.trim()}>Create key</button>
+      </form>
+      {err && <div className="warn err" style={{ marginBottom: 12 }}>{err}</div>}
+
+      {keys.length > 0 ? (
+        <table className="rows">
+          <thead><tr><th>Name</th><th>Created</th><th>Last used</th><th /></tr></thead>
+          <tbody>
+            {keys.map((k) => (
+              <tr key={k.id} style={k.revokedAt ? { opacity: 0.45 } : undefined}>
+                <td>{k.name}{k.revokedAt ? ' · revoked' : ''}</td>
+                <td className="muted">{new Date(k.createdAt).toLocaleDateString()}</td>
+                {/* "never" is worth showing: it usually means the key was issued
+                    and never wired up, or the pipeline is still on an older one. */}
+                <td className="muted">{k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString() : 'never'}</td>
+                <td style={{ textAlign: 'right' }}>
+                  {!k.revokedAt && (
+                    <button type="button" onClick={async () => {
+                      await api.revokeKey(k.id).catch((er: any) => setErr(er.message));
+                      load();
+                    }}>Revoke</button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : <p className="muted">No keys yet.</p>}
+    </>
+  );
+}

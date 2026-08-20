@@ -83,6 +83,20 @@ export interface AppRow {
   apiKeyHash: string | null;
 }
 
+/**
+ * An upload credential for one batch. Deliberately has no field for the key
+ * itself: the plaintext exists only in the response that created it, and the
+ * hash never leaves the database layer.
+ */
+export interface ApiKeyRow {
+  id: number;
+  name: string;
+  batchId: string;
+  createdAt: number;
+  lastUsedAt: number | null;
+  revokedAt: number | null;
+}
+
 export class Db {
   private db: Database;
 
@@ -158,6 +172,27 @@ export class Db {
         last_reference    TEXT,
         api_key_hash      TEXT
       );
+      -- Upload credentials, scoped to one batch each.
+      --
+      -- Separate from apps.api_key_hash because a batch needs MORE THAN ONE
+      -- live key to be rotatable: CI keeps working on the old key while the
+      -- new one is added, and only then is the old one revoked. A single key
+      -- per app forces a window where either the server or the pipeline is
+      -- wrong.
+      --
+      -- Only the hash is stored. The plaintext is returned once, at creation,
+      -- and cannot be recovered -- losing it means issuing another key, which
+      -- is cheap precisely because keys are plural.
+      CREATE TABLE IF NOT EXISTS api_keys (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        name         TEXT NOT NULL,
+        batch_id     TEXT NOT NULL,
+        key_hash     TEXT NOT NULL UNIQUE,
+        created_at   INTEGER NOT NULL,
+        last_used_at INTEGER,
+        revoked_at   INTEGER
+      );
+      CREATE INDEX IF NOT EXISTS idx_api_keys_batch ON api_keys (batch_id);
       CREATE TABLE IF NOT EXISTS alerts_sent (
         key     TEXT PRIMARY KEY,
         ts      INTEGER NOT NULL
@@ -440,6 +475,53 @@ export class Db {
 
   recentActions(limit = 100): ActionRow[] {
     return this.db.query(`SELECT * FROM actions ORDER BY ts DESC LIMIT ?`).all(limit).map(toAction);
+  }
+
+  // ── api keys (per batch, plural so they can be rotated) ──────────────
+
+  /** Rows as the dashboard sees them: never the hash, never the plaintext. */
+  apiKeys(batchId?: string): ApiKeyRow[] {
+    const rows = batchId
+      ? this.db.query(`SELECT * FROM api_keys WHERE batch_id = ? ORDER BY id DESC`).all(batchId)
+      : this.db.query(`SELECT * FROM api_keys ORDER BY id DESC`).all();
+    return (rows as any[]).map((r) => ({
+      id: r.id, name: r.name, batchId: r.batch_id,
+      createdAt: r.created_at, lastUsedAt: r.last_used_at, revokedAt: r.revoked_at,
+    }));
+  }
+
+  addApiKey(name: string, batchId: string, keyHash: string, now = Date.now()): number {
+    const r = this.db.query(
+      `INSERT INTO api_keys (name, batch_id, key_hash, created_at) VALUES (?, ?, ?, ?)`,
+    ).run(name, batchId, keyHash, now);
+    return Number(r.lastInsertRowid);
+  }
+
+  /**
+   * Resolve a presented key. Revoked keys return null rather than a row, so a
+   * revocation takes effect on the next request without a restart.
+   */
+  apiKeyByHash(hash: string): ApiKeyRow | null {
+    const r = this.db.query(
+      `SELECT * FROM api_keys WHERE key_hash = ? AND revoked_at IS NULL`,
+    ).get(hash) as any;
+    if (!r) return null;
+    return {
+      id: r.id, name: r.name, batchId: r.batch_id,
+      createdAt: r.created_at, lastUsedAt: r.last_used_at, revokedAt: r.revoked_at,
+    };
+  }
+
+  touchApiKey(id: number, now = Date.now()) {
+    this.db.query(`UPDATE api_keys SET last_used_at = ? WHERE id = ?`).run(now, id);
+  }
+
+  /** Idempotent: revoking an already-revoked key keeps the original timestamp. */
+  revokeApiKey(id: number, now = Date.now()): boolean {
+    const r = this.db.query(
+      `UPDATE api_keys SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL`,
+    ).run(now, id);
+    return r.changes > 0;
   }
 
   // ── apps ─────────────────────────────────────────────────────────────

@@ -1,14 +1,20 @@
 /**
  * HTTP surface.
  *
- * Two tiers with very different exposure:
+ * Three tiers with very different exposure:
  *
- *   /api/admin/*  — dashboard and anything that spends BZZ. Expected to sit
- *                   behind Traefik basicauth on the internal network; an
- *                   ADMIN_TOKEN adds defence in depth so a misconfigured proxy
- *                   does not immediately expose spending endpoints.
- *   /api/apps/*   — the public path dapps call instead of the Bee node. Only
- *                   ever uploads with an app's own batch, gated by quota.
+ *   /api/public/* — no credentials. A read-only view of the node and its
+ *                   batches, so the thing can be shown to people who have no
+ *                   business spending from it. Built by removing fields from
+ *                   the admin payload, so a new field is private until
+ *                   published on purpose.
+ *   /api/admin/*  — dashboard and anything that spends BZZ. ADMIN_TOKEN is the
+ *                   whole protection, not defence in depth behind a proxy, so
+ *                   it is checked at onRequest — before body validation, which
+ *                   otherwise answered anonymous callers with a schema.
+ *   /api/apps/*   — the path dapps and CI call instead of the Bee node. Uploads
+ *                   only with the batch its key names, gated by quota; the
+ *                   batch id a caller supplies is ignored.
  *
  * Nothing here reaches the Bee node's own API surface: /wallet, /chequebook,
  * /stake and friends stay unreachable from outside, which is what lets the node
@@ -22,7 +28,7 @@ import { Db } from './db';
 import { Alerter } from './alerts';
 import { Poller } from './poller';
 import { createBeeApi } from './beeApi';
-import { authenticate, sha256Hex, safeEqual } from './auth';
+import { authenticate, sha256Hex, safeEqual, hashApiKey } from './auth';
 import { checkQuota, limitsFor } from './quota';
 import { burnRate, quote, depthLadder, recommendDepth, reviewQuote, formatBytes, MIN_DEPTH, MAX_DEPTH } from './wizard';
 import { plurToBzz, bzzToPlur, storedBytes, capacityBytes, costPlur, amountForDuration } from './math';
@@ -114,7 +120,157 @@ export function createServer(deps: ServerDeps) {
    */
   const effective = () => applySettings(cfg, db.settings());
 
+  /**
+   * The dashboard payload. Shared by the admin route and the public one, so
+   * the two can never drift into disagreeing about the same node.
+   */
+  const stateFull = async () => {
+        const r = poller.last;
+        if (!r) return { ok: false, error: 'no poll completed yet' };
+        // Display only, and allowed to be null — see src/price.ts. Awaited
+        // here rather than in the poller so the figure is fresh on a manual
+        // refresh, but it is cached and never throws, so it cannot delay or
+        // fail this response in any meaningful way.
+        const price = await price$.get();
+        const unmanaged = db.unmanagedBatchIds();
+        const rows = new Map(db.batches().map((x) => [x.batchId, x]));
+        const batches = r.batches.map((b) => {
+          const row = rows.get(b.batchID);
+          return ({
+          ...b,
+          managed: !unmanaged.has(b.batchID),
+          /** Overrides as stored: null means this batch follows the global. */
+          policy: {
+            topupBelowDays: row?.topupBelowDays ?? null,
+            topupTargetDays: row?.topupTargetDays ?? null,
+            diluteAbove: row?.diluteAbove ?? null,
+            maxDiluteDepth: row?.maxDiluteDepth ?? null,
+          },
+          /** What is actually in force, after falling back to the globals. */
+          effective: policyFor(cfg, row ?? null),
+          storedBytes: storedBytes(b.utilizationRatio, b.depth).toString(),
+          capacityBytes: capacityBytes(b.depth).toString(),
+          storedHuman: formatBytes(storedBytes(b.utilizationRatio, b.depth)),
+          capacityHuman: formatBytes(capacityBytes(b.depth)),
+          ttlDays: b.batchTTL / 86_400,
+        });
+        });
+        return json({
+          ok: r.ok,
+          error: r.error ?? null,
+          msPerBlock: r.msPerBlock,
+          burnPer30DaysBzz: r.burnPer30DaysBzz,
+          committedBzz: r.committedBzz,
+          /**
+           * How stale this snapshot is, measured entirely on the server
+           * clock at request time. Sent as an AGE rather than a timestamp on
+           * purpose: a client counting down needs to know how far the figure
+           * has already run, and an age is immune to the browser's clock
+           * being wrong, where comparing two absolute timestamps is not.
+           */
+          dataAgeMs: Math.max(0, Date.now() - r.polledAt),
+          chequebook: r.chequebook ?? null,
+          /**
+           * Explicitly null, not Infinity.
+           *
+           * runwaySeconds() returns Infinity when nothing is burning, and
+           * JSON.stringify turns that into null on the wire regardless. The
+           * client's global isFinite() then reads null as 0 and reports a
+           * critical, zero-day runway on a node that has nothing to burn.
+           * Normalising here makes the wire contract match the type.
+           */
+          runwayDays: isFinite(r.runwayDays) ? r.runwayDays : null,
+          totalRunwayDays: isFinite(r.totalRunwayDays) ? r.totalRunwayDays : null,
+          wallet: r.wallet && {
+            bzz: plurToBzz(r.wallet.bzzBalance),
+            xdai: Number(r.wallet.nativeTokenBalance) / 1e18,
+            address: r.wallet.walletAddress,
+            chainId: r.wallet.chainID,
+            chequebookAddress: r.wallet.chequebookContractAddress,
+            /** Held in the chequebook for bandwidth — NOT spendable on postage. */
+            chequebookBzz: r.node?.chequebookBalance != null ? plurToBzz(r.node.chequebookBalance) : null,
+            chequebookAvailableBzz: r.node?.chequebookAvailable != null ? plurToBzz(r.node.chequebookAvailable) : null,
+            /** Locked in the staking contract — also not spendable on postage. */
+            stakedBzz: r.node?.stakedAmount != null ? plurToBzz(r.node.stakedAmount) : null,
+          },
+          node: r.node && {
+            healthy: r.node.healthy, version: r.node.version,
+            beeMode: r.node.beeMode, peers: r.node.peers ?? null,
+            storageRadius: r.node.storageRadius ?? null,
+          },
+          chain: r.chain && { block: r.chain.block, price: r.chain.currentPrice.toString() },
+          /** Fiat quote for BZZ, or null when unavailable. Never used in any calculation that spends. */
+          fiat: price && {
+            usd: price.usd, eur: price.eur,
+            usd24hChange: price.usd24hChange,
+            fetchedAt: price.fetchedAt,
+          },
+          batches,
+          plans: r.plans,
+          config: {
+            autoTopupEnabled: cfg.autoTopupEnabled,
+            dryRun: cfg.dryRun,
+            topupWhenTtlBelowDays: cfg.topupWhenTtlBelowSec / 86_400,
+            topupTargetTtlDays: cfg.topupTargetTtlSec / 86_400,
+          },
+        });
+  };
+
+  /**
+   * What an anonymous visitor gets.
+   *
+   * Built by REMOVING from the full payload rather than by assembling a second
+   * one: a new field added to stateFull() is then private until someone
+   * deliberately publishes it, which is the safe direction for a page that
+   * anyone can open. The reverse — an allowlist rebuilt by hand — leaks by
+   * omission the moment the two drift.
+   *
+   * Batches, node and wallet stay: all of it is already on-chain or derivable
+   * from it, and it is the point of publishing the page. What goes is anything
+   * describing INTENT rather than state — the planner's next moves and the caps
+   * and thresholds behind them, which tell a reader what this node will do
+   * automatically and how much it will spend doing it.
+   */
+  const statePublic = async () => {
+    const full: any = await stateFull();
+    if (!full || full.ok === false) return full;
+    const { plans, config, ...rest } = full;
+    return {
+      ...rest,
+      batches: (rest.batches ?? []).map((b: any) => {
+        const { policy, effective, ...keep } = b;
+        return keep;
+      }),
+      readOnly: true,
+    };
+  };
+
+
   const app = new Elysia()
+    /**
+     * Admin auth, enforced at the earliest hook there is.
+     *
+     * The group's own onBeforeHandle runs AFTER body validation, so an
+     * anonymous POST to a route with a schema was answered with 422 and the
+     * shape it expected, rather than 401. Nothing could be spent that way --
+     * the handler never ran -- but describing your admin API to strangers is
+     * not a thing to do by accident, and "validated, then rejected" is the
+     * wrong order for anything that buys postage.
+     *
+     * The per-group check stays as well: this one is a gate, not a substitute.
+     */
+    .onRequest(({ request, set }) => {
+      const path = new URL(request.url).pathname;
+      if (!path.startsWith('/api/admin')) return;
+      if (!adminToken) {
+        set.status = 503;
+        return { error: 'admin API disabled: no ADMIN_TOKEN configured' };
+      }
+      if (!safeEqual(String(request.headers.get('x-admin-token') ?? ''), adminToken)) {
+        set.status = 401;
+        return { error: 'admin token required' };
+      }
+    })
     .onError(({ error, set }) => {
       set.status = (error as any)?.status ?? 500;
       return { error: (error as any)?.message ?? String(error) };
@@ -134,6 +290,31 @@ export function createServer(deps: ServerDeps) {
         apiVersion: '8.1.0',
         lastPollOk: poller.last?.ok ?? null,
       };
+    })
+
+
+    /**
+     * Public, unauthenticated, read-only.
+     *
+     * Exists so the node can be shown to people who have no business spending
+     * from it — batch fullness and expiry are the whole story of whether a
+     * gateway is about to break, and that story is more useful shared than
+     * hidden. Nothing here writes, and nothing here is a secret: batch IDs are
+     * on-chain, and a batch ID grants no ability to upload, because stamping
+     * requires a signature from the node's own key.
+     */
+    .get('/api/public/state', () => statePublic())
+
+    /** Bucket map for one batch. Reads only; the same data the map already draws. */
+    .get('/api/public/batches/:id/buckets', async ({ params, set }) => {
+      const b = poller.last?.batches.find((x) => x.batchID === params.id);
+      if (!b) { set.status = 404; return { error: 'unknown batch' }; }
+      try {
+        const r = await bee.buckets(params.id);
+        const g = buildGrid(r);
+        return json({ ...g, label: b.label, immutable: b.immutableFlag,
+          pressure: bucketPressure(g, b.immutableFlag) });
+      } catch (e: any) { set.status = 502; return { error: e?.message ?? String(e) }; }
     })
 
     // ── admin ────────────────────────────────────────────────────────────
@@ -156,97 +337,7 @@ export function createServer(deps: ServerDeps) {
           }
         })
 
-        .get('/state', async () => {
-          const r = poller.last;
-          if (!r) return { ok: false, error: 'no poll completed yet' };
-          // Display only, and allowed to be null — see src/price.ts. Awaited
-          // here rather than in the poller so the figure is fresh on a manual
-          // refresh, but it is cached and never throws, so it cannot delay or
-          // fail this response in any meaningful way.
-          const price = await price$.get();
-          const unmanaged = db.unmanagedBatchIds();
-          const rows = new Map(db.batches().map((x) => [x.batchId, x]));
-          const batches = r.batches.map((b) => {
-            const row = rows.get(b.batchID);
-            return ({
-            ...b,
-            managed: !unmanaged.has(b.batchID),
-            /** Overrides as stored: null means this batch follows the global. */
-            policy: {
-              topupBelowDays: row?.topupBelowDays ?? null,
-              topupTargetDays: row?.topupTargetDays ?? null,
-              diluteAbove: row?.diluteAbove ?? null,
-              maxDiluteDepth: row?.maxDiluteDepth ?? null,
-            },
-            /** What is actually in force, after falling back to the globals. */
-            effective: policyFor(cfg, row ?? null),
-            storedBytes: storedBytes(b.utilizationRatio, b.depth).toString(),
-            capacityBytes: capacityBytes(b.depth).toString(),
-            storedHuman: formatBytes(storedBytes(b.utilizationRatio, b.depth)),
-            capacityHuman: formatBytes(capacityBytes(b.depth)),
-            ttlDays: b.batchTTL / 86_400,
-          });
-          });
-          return json({
-            ok: r.ok,
-            error: r.error ?? null,
-            msPerBlock: r.msPerBlock,
-            burnPer30DaysBzz: r.burnPer30DaysBzz,
-            committedBzz: r.committedBzz,
-            /**
-             * How stale this snapshot is, measured entirely on the server
-             * clock at request time. Sent as an AGE rather than a timestamp on
-             * purpose: a client counting down needs to know how far the figure
-             * has already run, and an age is immune to the browser's clock
-             * being wrong, where comparing two absolute timestamps is not.
-             */
-            dataAgeMs: Math.max(0, Date.now() - r.polledAt),
-            chequebook: r.chequebook ?? null,
-            /**
-             * Explicitly null, not Infinity.
-             *
-             * runwaySeconds() returns Infinity when nothing is burning, and
-             * JSON.stringify turns that into null on the wire regardless. The
-             * client's global isFinite() then reads null as 0 and reports a
-             * critical, zero-day runway on a node that has nothing to burn.
-             * Normalising here makes the wire contract match the type.
-             */
-            runwayDays: isFinite(r.runwayDays) ? r.runwayDays : null,
-            totalRunwayDays: isFinite(r.totalRunwayDays) ? r.totalRunwayDays : null,
-            wallet: r.wallet && {
-              bzz: plurToBzz(r.wallet.bzzBalance),
-              xdai: Number(r.wallet.nativeTokenBalance) / 1e18,
-              address: r.wallet.walletAddress,
-              chainId: r.wallet.chainID,
-              chequebookAddress: r.wallet.chequebookContractAddress,
-              /** Held in the chequebook for bandwidth — NOT spendable on postage. */
-              chequebookBzz: r.node?.chequebookBalance != null ? plurToBzz(r.node.chequebookBalance) : null,
-              chequebookAvailableBzz: r.node?.chequebookAvailable != null ? plurToBzz(r.node.chequebookAvailable) : null,
-              /** Locked in the staking contract — also not spendable on postage. */
-              stakedBzz: r.node?.stakedAmount != null ? plurToBzz(r.node.stakedAmount) : null,
-            },
-            node: r.node && {
-              healthy: r.node.healthy, version: r.node.version,
-              beeMode: r.node.beeMode, peers: r.node.peers ?? null,
-              storageRadius: r.node.storageRadius ?? null,
-            },
-            chain: r.chain && { block: r.chain.block, price: r.chain.currentPrice.toString() },
-            /** Fiat quote for BZZ, or null when unavailable. Never used in any calculation that spends. */
-            fiat: price && {
-              usd: price.usd, eur: price.eur,
-              usd24hChange: price.usd24hChange,
-              fetchedAt: price.fetchedAt,
-            },
-            batches,
-            plans: r.plans,
-            config: {
-              autoTopupEnabled: cfg.autoTopupEnabled,
-              dryRun: cfg.dryRun,
-              topupWhenTtlBelowDays: cfg.topupWhenTtlBelowSec / 86_400,
-              topupTargetTtlDays: cfg.topupTargetTtlSec / 86_400,
-            },
-          });
-        })
+        .get('/state', () => stateFull())
 
         /**
          * Runtime settings: every editable key, its environment value, any
@@ -691,6 +782,39 @@ export function createServer(deps: ServerDeps) {
          * behaviour is the kind of hidden coupling that surprises people later —
          * the UI suggests it instead.
          */
+
+        /**
+         * Issue an upload key for one batch.
+         *
+         * The plaintext is returned HERE AND NOWHERE ELSE. Only its hash is
+         * stored, so a lost key is reissued rather than recovered — which is
+         * why keys are plural per batch: adding one costs nothing, and rotation
+         * is add-then-revoke with no window where CI and server disagree.
+         */
+        .post('/batches/:id/keys', async ({ params, body, set }) => {
+          const { name } = (body ?? {}) as { name?: string };
+          if (!name || !name.trim()) { set.status = 400; return { error: 'name is required' }; }
+          if (!poller.last?.batches.some((b) => b.batchID === params.id)) {
+            set.status = 404; return { error: 'unknown batch' };
+          }
+          // 32 bytes of CSPRNG. Prefixed so a leaked key is greppable in logs
+          // and recognisable in a support paste without being guessable.
+          const raw = 'ssm_' + Array.from(crypto.getRandomValues(new Uint8Array(32)))
+            .map((b) => b.toString(16).padStart(2, '0')).join('');
+          const id = db.addApiKey(name.trim(), params.id, await hashApiKey(raw));
+          return json({ id, name: name.trim(), batchId: params.id, key: raw,
+            note: 'Copy this now — it is not stored and cannot be shown again.' });
+        }, { body: t.Object({ name: t.String({ minLength: 1, maxLength: 64 }) }) })
+
+        /** Never returns key material — only what a key is for and when it ran. */
+        .get('/batches/:id/keys', ({ params }) => json(db.apiKeys(params.id)))
+
+        .delete('/keys/:id', ({ params, set }) => {
+          const ok = db.revokeApiKey(Number(params.id));
+          if (!ok) { set.status = 404; return { error: 'unknown or already revoked' }; }
+          return { revoked: true };
+        })
+
         .patch('/batches/:id', async ({ params, body, set }) => {
           const b = body as {
             label?: string; managed?: boolean;

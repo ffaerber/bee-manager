@@ -169,7 +169,7 @@ function Service({ state, polling, onPoll, onSignOut }: {
   onPoll: () => void;
   onSignOut: () => void;
 }) {
-  const armed = state ? state.config.autoTopupEnabled && !state.config.dryRun : null;
+  const armed = state?.config ? state.config.autoTopupEnabled && !state.config.dryRun : null;
   return (
     <div className="card">
       <div className="spread">

@@ -16,11 +16,18 @@ export default function App() {
   const [actions, setActions] = useState<Action[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [token, setTok] = useState(api.getToken());
+  const [wantSignIn, setWantSignIn] = useState(false);
   const path = usePath();
   const batchId = batchIdFrom(path);
   const load = useCallback(async () => {
     try {
-      const [s, a] = await Promise.all([api.getState(), api.getActions()]);
+      // Read-only visitors get no ledger: /actions is admin-only, and asking
+      // for it would turn a working public page into a 401.
+      const readOnly = api.isReadOnly();
+      const [s, a] = await Promise.all([
+        api.getState(),
+        readOnly ? Promise.resolve([] as Action[]) : api.getActions(),
+      ]);
       // A successful fetch is NOT proof of a usable State. Until the first poll
       // completes, /state answers HTTP 200 with {ok:false, error} — req() only
       // throws on a bad status, so that half-built object used to be assigned
@@ -29,7 +36,11 @@ export default function App() {
       // (state.batches.find) on every restart until the poll landed.
       //
       // Every consumer already handles null; none of them handle half a State.
-      if (!s || !(s as Partial<State>).config) {
+      // `config` is the readiness marker for an operator, but it is absent by
+      // design on the public tier — checking it there would report a healthy
+      // node as perpetually "waiting for the first poll".
+      const ready = readOnly ? Array.isArray((s as Partial<State>).batches) : !!(s as Partial<State>).config;
+      if (!s || !ready) {
         setState(null);
         setNotReady((s as { error?: string } | undefined)?.error ?? 'waiting for the first poll');
         setErr(null);
@@ -45,13 +56,25 @@ export default function App() {
   // Shared, because the control that does this now lives on /settings while
   // the state it has to clear lives here.
   const signOut = useCallback(() => {
-    api.setToken(''); setTok(''); setState(null); setErr('admin token required');
-  }, []);
+    // Back to the public view rather than to a wall: the page is useful
+    // without a token, and dumping an operator onto an error screen for
+    // signing out reads as a fault.
+    api.clearToken(); setTok(''); setState(null); setErr(null); setWantSignIn(false); load();
+  }, [load]);
 
   // The API is protected by the admin token, not by the proxy, so the page
   // itself is served to anyone — it is inert without a token. Treat "no token"
   // and "rejected token" as the same thing: show the login.
-  const needsToken = err !== null && /401|403|admin token|disabled/i.test(err);
+  /**
+   * Only demand a token when one is actually needed.
+   *
+   * An anonymous visitor is not an error state: they get the read-only view.
+   * The login appears when a token was supplied and rejected, when the admin
+   * API is switched off, or when the operator asks for it with "Sign in" —
+   * never merely because nobody has signed in yet.
+   */
+  const rejected = err !== null && /401|403|admin token|disabled/i.test(err) && !api.isReadOnly();
+  const needsToken = rejected || wantSignIn;
   if (needsToken || (err && !state)) {
     const disabled = /disabled/i.test(err ?? '');
     return (
@@ -78,6 +101,9 @@ export default function App() {
                 style={{ flex: 1, minWidth: 240 }}
                 onChange={(e) => setTok(e.target.value)} />
               <button className="primary" type="submit" disabled={!token.trim()}>Unlock</button>
+              <button type="button" onClick={() => { setWantSignIn(false); setErr(null); load(); }}>
+                Continue read-only
+              </button>
             </form>
           )}
           {err && !disabled && <div className="warn err" style={{ marginTop: 12 }}>{err}</div>}
@@ -91,7 +117,7 @@ export default function App() {
 
   if (!state) return <div className="wrap"><p className="muted">{notReady ?? 'Loading…'}</p></div>;
 
-  const armed = state.config.autoTopupEnabled && !state.config.dryRun;
+  const armed = !!state.config && state.config.autoTopupEnabled && !state.config.dryRun;
 
   return (
     <div className="wrap">
@@ -100,7 +126,16 @@ export default function App() {
           carries identity and the way out, nothing that needs reading. */}
       <div className="spread" style={{ marginBottom: 16 }}>
         <h1 className="brand">Swarm stamp monitor</h1>
-        <a className="backlink" {...link('/settings')}>Settings</a>
+        <div className="row" style={{ gap: 12, alignItems: 'center' }}>
+          {state.readOnly
+            ? <>
+                <span className="status" title="No admin token: nothing here can spend or upload">
+                  read-only
+                </span>
+                <button type="button" onClick={() => setWantSignIn(true)}>Sign in</button>
+              </>
+            : <a className="backlink" {...link('/settings')}>Settings</a>}
+        </div>
       </div>
 
       {/* Armed is the intended steady state, so it gets no banner — only the
@@ -122,9 +157,13 @@ export default function App() {
         </div>
       )}
 
-      {!armed && (
+      {/* Only an operator can be told this. On the public tier `config` is
+          withheld, so `armed` is false for want of data, not because the
+          service is disarmed — announcing "auto top-up is OFF" to a visitor
+          would be stating as fact something the page was never told. */}
+      {!state.readOnly && !armed && (
         <div className="banner warn">
-          Auto top-up is OFF ({!state.config.autoTopupEnabled ? 'AUTO_TOPUP_ENABLED=false' : 'DRY_RUN=true'})
+          Auto top-up is OFF ({!state.config?.autoTopupEnabled ? 'AUTO_TOPUP_ENABLED=false' : 'DRY_RUN=true'})
           {' '}— batches are still monitored, but nothing is topped up. Stamps can expire.
         </div>
       )}
@@ -387,7 +426,7 @@ function BatchTable({ rows, threshold }: { rows: Batch[]; threshold: number }) {
 }
 
 function Batches({ state, onChange }: { state: State; onChange: () => void }) {
-  const threshold = state.config.topupWhenTtlBelowDays;
+  const threshold = state.config?.topupWhenTtlBelowDays ?? 0;
   // Buying lives here rather than in its own panel: a new batch is a row in
   // this table, so the action belongs next to the thing it changes.
   const [creating, setCreating] = useState(false);
@@ -470,7 +509,7 @@ function Batches({ state, onChange }: { state: State; onChange: () => void }) {
           <Wizard state={state} onDone={onChange} />
         </Modal>
       )}
-      <Plans plans={state.plans} batches={state.batches} />
+      {state.plans && <Plans plans={state.plans} batches={state.batches} />}
     </div>
   );
 }

@@ -45,11 +45,45 @@ export function createBeeApi({ bee, db, poller, adminToken }: BeeApiDeps) {
    * dashboard lives at `/`, and `/api/*` is the monitor's own API.
    */
   const OWNED = /^\/(api|health|assets|batch|settings)(\/|$)|^\/$|^\/index\.html$/;
-  /** Resolve the calling app from its API key. */
+  /**
+   * Resolve the caller from its API key.
+   *
+   * Two kinds of key resolve here, and both end up as an AppRow because that is
+   * what the upload path needs — a name for the quota ledger and exactly one
+   * batch to stamp with:
+   *
+   *   apps.api_key_hash  the original per-app key
+   *   api_keys           per-batch keys, plural and individually revocable
+   *
+   * Per-batch keys are checked first so that revoking one takes effect even if
+   * an app happens to hold the same secret. A revoked key resolves to null on
+   * the next request — no restart, no cache to invalidate.
+   */
   async function appFor(headers: Record<string, string | undefined>): Promise<AppRow | null> {
     const key = headers['x-api-key'] ?? headers['authorization']?.replace(/^Bearer\s+/i, '');
     if (!key) return null;
-    return db.appByApiKeyHash(await hashApiKey(key));
+    const hash = await hashApiKey(key);
+
+    const k = db.apiKeyByHash(hash);
+    if (k) {
+      db.touchApiKey(k.id);
+      // Synthesised, not stored: the key IS the authorisation, and its batch is
+      // the only one it can ever write to. Naming it after the key rather than
+      // an app keeps the upload ledger pointing at the credential that was
+      // used, which is what you need when revoking one of several.
+      return {
+        name: `key:${k.name}`,
+        policy: 'permanent',
+        depth: 0,
+        durationDays: 0,
+        batchId: k.batchId,
+        budgetPlurPerDay: 0n,
+        ensName: null,
+        lastReference: null,
+        apiKeyHash: hash,
+      };
+    }
+    return db.appByApiKeyHash(hash);
   }
 
   return new Elysia()

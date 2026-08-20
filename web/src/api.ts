@@ -5,6 +5,16 @@ const TOKEN_KEY = 'ssm-admin-token';
 
 export const getToken = () => localStorage.getItem(TOKEN_KEY) ?? '';
 export const setToken = (t: string) => localStorage.setItem(TOKEN_KEY, t);
+export const clearToken = () => localStorage.removeItem(TOKEN_KEY);
+
+/**
+ * Read-only is the absence of a token, not a stored preference.
+ *
+ * Deriving it means the two can never disagree: there is no state in which the
+ * page believes it is an operator while every request goes out unauthenticated,
+ * which would show write controls that then fail one by one.
+ */
+export const isReadOnly = () => getToken() === '';
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api/admin${path}`, {
@@ -15,6 +25,28 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   if (!res.ok) throw new Error((body as any)?.error ?? `HTTP ${res.status}`);
   return body as T;
 }
+
+/** The unauthenticated projection. Same shape, minus plans, config and policy. */
+async function pub<T>(path: string): Promise<T> {
+  const res = await fetch(`/api/public${path}`);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((body as any)?.error ?? `HTTP ${res.status}`);
+  return body as T;
+}
+
+/** One upload credential. The key itself is only ever in the create response. */
+export interface ApiKey {
+  id: number; name: string; batchId: string;
+  createdAt: number; lastUsedAt: number | null; revokedAt: number | null;
+}
+
+export const listKeys = (batchId: string) => req<ApiKey[]>(`/batches/${batchId}/keys`);
+export const createKey = (batchId: string, name: string) =>
+  req<ApiKey & { key: string; note: string }>(`/batches/${batchId}/keys`, {
+    method: 'POST', body: JSON.stringify({ name }),
+  });
+export const revokeKey = (id: number) =>
+  req<{ revoked: boolean }>(`/keys/${id}`, { method: 'DELETE' });
 
 /**
  * The ticker shown for every on-chain amount.
@@ -63,6 +95,12 @@ export interface Chequebook {
 }
 
 export interface State {
+  /**
+   * True on the unauthenticated projection. Set by the server, not inferred
+   * here, so the page cannot believe it has write access that the API will
+   * then refuse field by field.
+   */
+  readOnly?: boolean;
   ok: boolean; error: string | null; msPerBlock: number;
   burnPer30DaysBzz: number;
   /**
@@ -97,7 +135,8 @@ export interface State {
   fiat?: { usd: number; eur: number; usd24hChange: number; fetchedAt: number } | null;
   batches: Batch[];
   plans: { kind: 'none' | 'topup' | 'dilute' | 'blocked'; batchId: string; reason: string }[];
-  config: { autoTopupEnabled: boolean; dryRun: boolean; topupWhenTtlBelowDays: number; topupTargetTtlDays: number };
+  /** Absent on the public tier, along with every cap and threshold. */
+  config?: { autoTopupEnabled: boolean; dryRun: boolean; topupWhenTtlBelowDays: number; topupTargetTtlDays: number };
 }
 export interface Quote {
   depth: number; days: number; costBzz: number; capacityGb: number;
@@ -133,7 +172,8 @@ export interface BucketGrid {
   pressure: { level: 'good' | 'warning' | 'critical'; message: string };
 }
 
-export const getBuckets = (id: string) => req<BucketGrid>(`/batches/${id}/buckets`);
+export const getBuckets = (id: string) =>
+  isReadOnly() ? pub<BucketGrid>(`/batches/${id}/buckets`) : req<BucketGrid>(`/batches/${id}/buckets`);
 
 /** Preview of what a manual top-up would do. */
 export interface TopupPreview {
@@ -211,7 +251,13 @@ export const patchSettings = (patch: Record<string, unknown>) =>
     confirmRequired?: boolean; changes?: SettingChange[];
   }>('/settings', { method: 'PATCH', body: JSON.stringify(patch) });
 
-export const getState = () => req<State>('/state');
+/**
+ * State, from whichever tier the caller is entitled to.
+ *
+ * Routed here rather than at each call site so a read-only visitor cannot
+ * accidentally hit the admin path and get a 401 rendered as a broken page.
+ */
+export const getState = () => (isReadOnly() ? pub<State>('/state') : req<State>('/state'));
 export const getActions = () => req<Action[]>('/actions?limit=25');
 export const getLadder = (days: number, storedBytes?: string) =>
   req<Ladder>(`/wizard/ladder?days=${days}${storedBytes ? `&storedBytes=${storedBytes}` : ''}`);
