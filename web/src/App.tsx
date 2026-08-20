@@ -127,6 +127,17 @@ export default function App() {
       <div className="spread" style={{ marginBottom: 16 }}>
         <h1 className="brand">Swarm stamp monitor</h1>
         <div className="row" style={{ gap: 12, alignItems: 'center' }}>
+          {/* Which build is answering. The page and the service ship together,
+              so one stamp covers both — and it is the server's, not the
+              bundle's, so a cached page shows the version it was cached from
+              and the mismatch is the point. */}
+          {state.build && (
+            <span className="muted" style={{ fontSize: 11, fontVariantNumeric: 'tabular-nums' }}
+              title={state.build.time ? `built ${new Date(state.build.time).toLocaleString()}` : 'local build'}>
+              {state.build.sha}
+              {state.build.time && ` · ${new Date(state.build.time).toISOString().slice(0, 10)}`}
+            </span>
+          )}
           {state.readOnly
             ? <>
                 <span className="status" title="No admin token: nothing here can spend or upload">

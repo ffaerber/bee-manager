@@ -94,7 +94,11 @@ export interface Chequebook {
   low: boolean;
 }
 
+export interface Build { sha: string; time: string | null }
+
 export interface State {
+  /** Which build is serving this page. Stamped into the image by CI. */
+  build?: Build;
   /**
    * True on the unauthenticated projection. Set by the server, not inferred
    * here, so the page cannot believe it has write access that the API will

@@ -49,6 +49,19 @@ export interface ServerDeps {
   price?: PriceFeed;
 }
 
+/**
+ * Which build this is, stamped into the image by CI.
+ *
+ * Exists because "is the dashboard I am looking at the one I just deployed?"
+ * had no answer short of diffing hashed asset filenames against a local build.
+ * A stale page and a current one looked identical, which is a bad property for
+ * a page whose whole job is telling you the truth about a node.
+ */
+export const BUILD = {
+  sha: (process.env.BUILD_SHA || 'dev').slice(0, 7),
+  time: process.env.BUILD_TIME || null,
+};
+
 /** bigint is not JSON-serialisable; render as string to preserve exactness. */
 const json = (v: unknown) => JSON.parse(JSON.stringify(v, (_k, x) => (typeof x === 'bigint' ? x.toString() : x)));
 
@@ -156,6 +169,7 @@ export function createServer(deps: ServerDeps) {
         });
         });
         return json({
+          build: BUILD,
           ok: r.ok,
           error: r.error ?? null,
           msPerBlock: r.msPerBlock,
@@ -288,6 +302,7 @@ export function createServer(deps: ServerDeps) {
         status: ok ? 'ok' : 'degraded',
         version: 'swarm-stamp-monitor',
         apiVersion: '8.1.0',
+        build: BUILD,
         lastPollOk: poller.last?.ok ?? null,
       };
     })
@@ -1064,8 +1079,19 @@ export function createServer(deps: ServerDeps) {
   }
 
   if (existsSync(webDist)) {
+    /**
+     * index.html is the pointer to the content-hashed bundle, so it is the one
+     * file that must never be cached. It was served with NO cache headers at
+     * all -- no Cache-Control, no ETag, no Last-Modified -- which leaves
+     * browsers to apply heuristic caching, and a stale index pins the old
+     * bundle indefinitely however many times the service is redeployed. That
+     * is precisely how a deployed change appeared not to have shipped.
+     */
     const index = () => new Response(Bun.file(`${webDist}/index.html`), {
-      headers: { 'content-type': 'text/html; charset=utf-8' },
+      headers: {
+        'content-type': 'text/html; charset=utf-8',
+        'cache-control': 'no-cache, must-revalidate',
+      },
     });
     app.get('/', index);
     app.get('/index.html', index);
@@ -1077,10 +1103,15 @@ export function createServer(deps: ServerDeps) {
      */
     app.get('/batch/:id', index);
     app.get('/settings', index);
+    // The opposite rule, for the opposite reason: these filenames contain a
+    // hash of their contents, so a given URL can never change. Caching them
+    // for a year is free, and it is what makes a no-cache index cheap.
     app.get('/assets/*', ({ params, set }: any) => {
       const file = Bun.file(`${webDist}/assets/${params['*']}`);
       set.status = 200;
-      return new Response(file);
+      return new Response(file, {
+        headers: { 'cache-control': 'public, max-age=31536000, immutable' },
+      });
     });
   } else {
     console.log(`[server] no dashboard at ${webDist} — API only`);
