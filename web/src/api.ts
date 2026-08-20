@@ -102,9 +102,21 @@ export interface Chequebook {
 
 export interface Build { sha: string; time: string | null }
 
+/** Third-party view of whether peers can dial this node. Null = unknown. */
+export interface Reachability {
+  overlay: string;
+  unreachable: boolean | null;
+  handshakeMs: number | null;
+  userAgent: string | null;
+  lastCheckedAt: number | null;
+  error: string | null;
+  fetchedAt: number;
+}
+
 export interface State {
   /** Which build is serving this page. Stamped into the image by CI. */
   build?: Build;
+  reachability?: Reachability | null;
   /**
    * True on the unauthenticated projection. Set by the server, not inferred
    * here, so the page cannot believe it has write access that the API will

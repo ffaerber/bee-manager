@@ -50,6 +50,13 @@ export interface Wallet {
 /** Node health beyond the stamps themselves — the "is the node itself okay" view. */
 export interface NodeStatus {
   healthy: boolean;
+  /**
+   * This node's overlay address — its identity on the network.
+   *
+   * Needed to ask anyone else about it: every external view is keyed by
+   * overlay, and it is the one identifier that survives an IP change.
+   */
+  overlay?: string;
   version?: string;
   apiVersion?: string;
   beeMode?: string;
@@ -229,7 +236,7 @@ export class BeeClient {
         apiVersion: health?.apiVersion,
       };
       const settle = async <T>(p: Promise<T>): Promise<T | undefined> => p.catch(() => undefined);
-      const [node, stake, cheque, reserve, topology, settlements, cheques] = await Promise.all([
+      const [node, stake, cheque, reserve, topology, settlements, cheques, addresses] = await Promise.all([
         settle(this.request('/node')),
         settle(this.request('/stake')),
         settle(this.request('/chequebook/balance')),
@@ -237,8 +244,10 @@ export class BeeClient {
         settle(this.request('/topology')),
         settle(this.request('/settlements')),
         settle(this.request('/chequebook/cheque')),
+        settle(this.request('/addresses')),
       ]);
       if (node) { status.beeMode = node.beeMode; status.chequebookEnabled = node.chequebookEnabled; }
+      if (typeof addresses?.overlay === 'string') status.overlay = addresses.overlay;
       if (stake?.stakedAmount != null) status.stakedAmount = BigInt(stake.stakedAmount);
       if (cheque?.totalBalance != null) status.chequebookBalance = BigInt(cheque.totalBalance);
       if (cheque?.availableBalance != null) status.chequebookAvailable = BigInt(cheque.availableBalance);

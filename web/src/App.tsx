@@ -172,6 +172,24 @@ export default function App() {
           withheld, so `armed` is false for want of data, not because the
           service is disarmed — announcing "auto top-up is OFF" to a visitor
           would be stating as fact something the page was never told. */}
+      {/* The one fault with no local symptom. Peer counts look healthy whether
+          or not anyone can dial in, because those connections are outbound, so
+          this is the only place the difference shows. Shown to every tier: it
+          describes the node's standing on the network, not what the operator
+          intends to spend. */}
+      {state.reachability?.unreachable === true && (
+        <div className="banner warn">
+          Peers cannot dial this node from the internet
+          {state.reachability.error ? ` — ${state.reachability.error}` : ''}.
+          {' '}The peer count below is unaffected because those connections are outbound.
+          {' '}Usually a port forward, or an advertised address that no longer matches the
+          {' '}WAN address.
+          {state.reachability.lastCheckedAt && (
+            <> Checked {new Date(state.reachability.lastCheckedAt).toLocaleString()}.</>
+          )}
+        </div>
+      )}
+
       {!state.readOnly && !armed && (
         <div className="banner warn">
           Auto top-up is OFF ({!state.config?.autoTopupEnabled ? 'AUTO_TOPUP_ENABLED=false' : 'DRY_RUN=true'})

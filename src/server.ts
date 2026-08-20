@@ -212,6 +212,13 @@ export function createServer(deps: ServerDeps) {
             beeMode: r.node.beeMode, peers: r.node.peers ?? null,
             storageRadius: r.node.storageRadius ?? null,
           },
+          /**
+           * Kept on the PUBLIC tier too. It describes the node's standing on
+           * the network, like its peer count and version — not what the
+           * operator intends to spend — and it is already public: anyone can
+           * query the same observer for the same overlay.
+           */
+          reachability: r.reachability ?? null,
           chain: r.chain && { block: r.chain.block, price: r.chain.currentPrice.toString() },
           /** Fiat quote for BZZ, or null when unavailable. Never used in any calculation that spends. */
           fiat: price && {

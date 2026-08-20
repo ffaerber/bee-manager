@@ -21,7 +21,9 @@ export type AlertEvent =
   | 'chequebook_low'
   | 'batch_full'
   | 'quota_exceeded'
-  | 'node_unreachable';
+  | 'node_unreachable'
+  /** Distinct from node_unreachable: WE can reach it, the NETWORK cannot. */
+  | 'node_undialable';
 
 export interface Alert {
   event: AlertEvent;
@@ -34,7 +36,7 @@ export interface Alert {
 }
 
 /** Events that should re-fire immediately once the condition clears. */
-const CLEARABLE: AlertEvent[] = ['batch_low', 'wallet_low', 'node_unreachable'];
+const CLEARABLE: AlertEvent[] = ['batch_low', 'wallet_low', 'node_unreachable', 'node_undialable'];
 
 export class Alerter {
   constructor(

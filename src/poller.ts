@@ -11,6 +11,7 @@
 import { BeeClient, BeeIndeterminateError, type Batch, type ChainState, type NodeStatus, type Wallet } from './bee';
 import { Db } from './db';
 import { applySettings } from './settings';
+import { ReachabilityFeed, type Reachability } from './reachability';
 import { Alerter } from './alerts';
 import { evaluateAll, findDisappeared, totalBurnPer30Days, totalCommitted, type EvalContext, type Plan } from './evaluate';
 import {
@@ -66,6 +67,11 @@ export interface PollResult {
   totalRunwayDays: number;
   /** Value paid into the batches and not yet consumed, in xBZZ. */
   committedBzz: number;
+  /**
+   * Whether anyone outside can dial this node, as reported by a third party.
+   * Null when unknown, disabled, or unreadable — never assume reachable.
+   */
+  reachability?: Reachability | null;
   /**
    * SWAP settlement health. Absent when the node has no chequebook, or when
    * the endpoints could not be read — the rest of the poll still stands.
@@ -151,6 +157,12 @@ export class Poller {
     private readonly bee: BeeClient,
     private readonly db: Db,
     private readonly alerter: Alerter,
+    /**
+     * Optional third-party view of whether anyone can dial this node. Omitted
+     * in tests and when disabled; the poll is unaffected either way, because
+     * nothing here gates a spend on it.
+     */
+    private readonly reach?: ReachabilityFeed,
   ) {}
 
   /**
@@ -305,8 +317,45 @@ export class Poller {
     // Depends on `node`, so it has to come after that read.
     const chequebook = await this.readChequebook(node, cfg, now);
 
+    /**
+     * The outside view. Cached for an hour upstream of here, so this is a
+     * cheap read on almost every tick, and it never throws — a node whose
+     * reachability is unknown is still a node whose batches must be renewed.
+     */
+    const reachability = node?.overlay
+      ? await this.reach?.get(node.overlay, now).catch(() => null) ?? null
+      : null;
+
+    /**
+     * Undialable is a warning, not an error: nothing here is broken from this
+     * side, and the batches still renew. It is reported because it is the one
+     * fault with no local symptom — the node reports a full peer table either
+     * way, since those peers were all dialled outbound.
+     *
+     * Only fires on a definite `true`. Unknown stays silent: an observer being
+     * down is not evidence about the node, and crying wolf on a third party's
+     * outage is how a real finding gets ignored.
+     */
+    if (reachability?.unreachable === true) {
+      await this.alerter.send({
+        event: 'node_undialable', level: 'warn',
+        message: `Peers cannot dial this node from the internet` +
+                 `${reachability.error ? ` — ${reachability.error}` : ''}. ` +
+                 `Local peer counts look normal regardless, because those connections are ` +
+                 `outbound. Usually a port forward, or an advertised address that no longer ` +
+                 `matches the WAN address.`,
+        details: {
+          overlay: reachability.overlay,
+          handshakeMs: reachability.handshakeMs,
+          lastCheckedAt: reachability.lastCheckedAt,
+        },
+      });
+    } else if (reachability?.unreachable === false) {
+      await this.alerter.clear('node_undialable');
+    }
+
     this.last = {
-      ok: true, batches, chain, wallet, node, plans,
+      ok: true, batches, chain, wallet, node, plans, reachability,
       msPerBlock: this.msPerBlock,
       burnPer30DaysBzz: plurToBzz(burn),
       runwayDays,
