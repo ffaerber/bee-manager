@@ -430,7 +430,20 @@ function Batches({ state, onChange }: { state: State; onChange: () => void }) {
   // Buying lives here rather than in its own panel: a new batch is a row in
   // this table, so the action belongs next to the thing it changes.
   const [creating, setCreating] = useState(false);
-  const [hideUnmanaged, setHideUnmanaged] = useSticky('ssm.hideUnmanaged', false);
+  /**
+   * Folded by default.
+   *
+   * Unmanaged is the deliberate state for a batch being allowed to lapse, so
+   * the list is mostly things already dealt with — and a list of resolved
+   * items sitting above the ones that need attention is how the ones that
+   * matter stop being read.
+   *
+   * The key is versioned because the old default was "shown": without the
+   * bump, any browser that had explicitly chosen Show would keep it and the
+   * new default would appear not to work. One reset, then the choice sticks
+   * again as before.
+   */
+  const [hideUnmanaged, setHideUnmanaged] = useSticky('ssm.hideUnmanaged.v2', true);
 
   const managed = state.batches.filter((b) => b.managed);
   const unmanaged = state.batches.filter((b) => !b.managed);
