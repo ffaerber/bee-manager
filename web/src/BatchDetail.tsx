@@ -146,7 +146,11 @@ export function BatchDetail({ batchId, state, onChange }: {
             onDone={async () => { await onChange(); await load(); }} />
         )}
 
-        {batch?.managed && <Policy b={batch} state={state!} onChange={onChange} />}
+        {/* A write surface, hidden rather than disabled for read-only: a
+            control that looks available and 401s is worse than one that was
+            never offered. Its thresholds are withheld from that tier anyway. */}
+        {batch?.managed && !api.isReadOnly() && batch.effective &&
+          <Policy b={batch} state={state!} onChange={onChange} />}
 
         {!data && !err && <div className="card"><p className="muted">Reading 65,536 buckets…</p></div>}
 
@@ -445,7 +449,10 @@ function Policy({ b, state, onChange }: {
   const [err, setErr] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
+  // Guaranteed by the caller, which renders this only for an operator. Narrowed
+  // here too so the compiler enforces it rather than a comment claiming it.
   const eff = b.effective;
+  if (!eff) return null;
   const below = Math.round(eff.topupWhenTtlBelowSec / 86_400);
   const target = Math.round(eff.topupTargetTtlSec / 86_400);
   /** What one full top-up costs at the current chain price, or null if unknown. */
@@ -609,7 +616,11 @@ function Vitals({ b, data, state, onDone }: {
   const [life, setLife] = useState(false);
   const [room, setRoom] = useState(false);
 
-  const threshold = b.effective.topupWhenTtlBelowSec / 86_400;
+  // Read-only visitors get no policy, so there is no threshold to compare
+  // against. Fall back to the batch's own numbers rather than inventing one:
+  // "expires in 16 days" is true for everyone; "below your top-up threshold"
+  // is only meaningful to whoever set it.
+  const threshold = b.effective ? b.effective.topupWhenTtlBelowSec / 86_400 : null;
   const sev = ttlSeverity(b.ttlDays, threshold);
   const ttlPct = Math.max(2, Math.min(100, (b.ttlDays / 90) * 100));
 
@@ -617,7 +628,7 @@ function Vitals({ b, data, state, onDone }: {
   // actually stops a write. Bytes stored are shown underneath as context.
   const fullPct = Math.max(1, Math.min(100, b.utilizationRatio * 100));
   const roomSev = b.utilizationRatio >= 1 ? 'critical'
-    : b.utilizationRatio >= b.effective.diluteWhenUtilizationAbove ? 'warning' : 'good';
+    : b.effective && b.utilizationRatio >= b.effective.diluteWhenUtilizationAbove ? 'warning' : 'good';
 
   return (
     <div className="card">
@@ -714,7 +725,7 @@ function Vitals({ b, data, state, onDone }: {
  * the confirm rather than after it.
  */
 function Topup({ b, onDone }: { b: Batch; onDone: () => Promise<void> }) {
-  const targetDefault = Math.round(b.effective.topupTargetTtlSec / 86_400);
+  const targetDefault = Math.round((b.effective?.topupTargetTtlSec ?? 60 * 86_400) / 86_400);
   /**
    * Two ways to say the same thing, because both are natural depending on why
    * you are here. "Extend to" matches the automatic path and the policy field;

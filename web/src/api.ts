@@ -66,8 +66,14 @@ export interface Batch {
   storedHuman: string; capacityHuman: string; managed: boolean;
   /** Stored overrides; null means this batch follows the global setting. */
   policy: BatchPolicy;
-  /** What is actually in force once the globals are applied. */
-  effective: {
+  /**
+   * What is in force once the globals are applied.
+   *
+   * Absent on the public tier — it is per-batch policy, which says what this
+   * node will do unattended. Optional in the type so the compiler forces every
+   * reader to handle a batch that never carries it.
+   */
+  effective?: {
     topupWhenTtlBelowSec: number; topupTargetTtlSec: number;
     diluteWhenUtilizationAbove: number; maxAutoDiluteDepth: number;
   };

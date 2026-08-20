@@ -12,9 +12,12 @@
  * the point at which the monitor intends to act, not the point at which
  * anything is broken.
  */
-export function ttlSeverity(days: number, thresholdDays: number): 'good' | 'warning' | 'critical' {
+export function ttlSeverity(days: number, thresholdDays: number | null): 'good' | 'warning' | 'critical' {
   if (days <= 0) return 'critical';
-  if (days < thresholdDays) return 'warning';
+  // A read-only viewer is told no thresholds, so there is nothing to be "below".
+  // Already expired still reads critical — that is a fact about the batch, not
+  // about anyone's policy.
+  if (thresholdDays != null && days < thresholdDays) return 'warning';
   return 'good';
 }
 
