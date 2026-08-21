@@ -678,7 +678,23 @@ function BatchRow({ b, threshold }: { b: Batch; threshold: number }) {
   // TTL bar is relative to a 90-day full scale, clamped.
   const ttlPct = Math.max(2, Math.min(100, (b.ttlDays / 90) * 100));
   const usePct = Math.max(0.5, Math.min(100, b.utilizationRatio * 100));
-  const useSev = b.utilizationRatio >= 1 ? 'critical'
+  /**
+   * At capacity, mutable and immutable are different events.
+   *
+   * Immutable refuses every further upload, batch-wide — an outage. Mutable
+   * recycles its oldest chunk in that bucket, which is the behaviour it was
+   * bought for; on this gateway the hot bucket is the SAME chunk re-stamped,
+   * so recycling costs nothing at all. Painting both critical taught the eye
+   * to ignore the colour that matters.
+   *
+   * The figure itself is Bee's `utilization`, which counts stamps ISSUED and
+   * saturates: a mutable batch that has ever recycled reads 100% forever, even
+   * at 13 of 16 stored. The batch page corrects this from the bucket map;
+   * here, one map per batch per poll is not worth the bytes, so the number
+   * stays as reported and only the severity tells the truth.
+   */
+  const atCapacity = b.utilizationRatio >= 1;
+  const useSev = atCapacity ? (b.immutableFlag ? 'critical' : 'warning')
     : b.utilizationRatio >= 0.8 ? 'warning' : 'good';
 
   return (
@@ -713,8 +729,13 @@ function BatchRow({ b, threshold }: { b: Batch; threshold: number }) {
       <td>
         <div className="row" style={{ gap: 8, flexWrap: 'nowrap' }}>
           <span className={`meter ${useSev}`} style={{ width: 90 }}><i style={{ width: `${usePct}%` }} /></span>
-          <span className="mono secondary" style={{ minWidth: 46 }}>
-            {(b.utilizationRatio * 100).toFixed(1)}%
+          <span className="mono secondary" style={{ minWidth: 46 }}
+            title={atCapacity
+              ? (b.immutableFlag
+                  ? 'Fullest bucket at capacity, and immutable: further uploads are refused batch-wide'
+                  : 'Fullest bucket has begun recycling. Stamps issued, not chunks stored — open the batch for what is actually held')
+              : 'Fullest bucket, as a share of its capacity'}>
+            {atCapacity && !b.immutableFlag ? 'recycling' : `${(b.utilizationRatio * 100).toFixed(1)}%`}
           </span>
         </div>
       </td>

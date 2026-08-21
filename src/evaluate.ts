@@ -109,7 +109,24 @@ export function fullnessMessage(batch: Batch, f: Fullness): string | null {
   if (f === 'full') {
     return batch.immutableFlag
       ? `${where} is full — its fullest bucket is at capacity and it is immutable, so it will refuse every further upload. Dilute it to accept writes again.`
-      : `${where} is full — its fullest bucket is at capacity, so further uploads landing there silently recycle its oldest chunks. Dilute it to stop the loss.`;
+      /**
+       * Deliberately does not prescribe dilution any more.
+       *
+       * A mutable batch at capacity is doing what it was bought to do, and the
+       * usual cause here is a repeated IDENTICAL chunk: same content, same
+       * address, same bucket, so what recycles is a duplicate and nothing is
+       * lost. Diluting that halves the TTL and doubles the monthly cost to
+       * chase a bucket that refills immediately — measured on t4t-v3, which
+       * was diluted 18 -> 19 -> 20 for exactly this and gained nothing.
+       *
+       * It only costs data when that bucket holds DISTINCT chunks, which the
+       * bucket map can show and this figure cannot, so the message points
+       * there rather than recommending a spend.
+       */
+      : `${where} has a bucket at capacity, so it is now recycling its oldest chunk there on each ` +
+        `new upload that lands in it. That is normal for a mutable batch and costs nothing when the ` +
+        `bucket holds a repeated identical chunk. Check its bucket map before diluting: dilution ` +
+        `halves the TTL and doubles the cost, and does not help if the same content keeps being restamped.`;
   }
   return `${where} is nearly full — its fullest bucket is one slot from capacity.`;
 }

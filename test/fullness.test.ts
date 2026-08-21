@@ -53,10 +53,32 @@ describe('fullnessMessage', () => {
     const immutable = fullnessMessage(batch(24, 1, true), 'full')!;
     const mutable = fullnessMessage(batch(24, 1, false), 'full')!;
     expect(immutable).toContain('refuse every further upload');
-    expect(mutable).toContain('recycle');
+    // Matches the stem, not one inflection: the claim is that the message is
+    // ABOUT recycling, not that it uses a particular word form.
+    expect(mutable).toMatch(/recycl/);
     // Never the wrong one — these are opposite failures.
-    expect(immutable).not.toContain('recycle');
+    expect(immutable).not.toMatch(/recycl/);
     expect(mutable).not.toContain('refuse every further upload');
+  });
+
+  /**
+   * A mutable batch at capacity is doing what it was bought to do, and the
+   * usual cause here is a repeated identical chunk — same content, same
+   * address, same bucket — so what recycles is a duplicate.
+   *
+   * t4t-v3 was diluted 18 -> 19 -> 20 chasing exactly that, doubling its
+   * monthly cost each step for a bucket that refilled immediately. The message
+   * must not send the next person down the same path.
+   */
+  it('does not prescribe dilution to a mutable batch', () => {
+    const mutable = fullnessMessage(batch(24, 1, false), 'full')!;
+    expect(mutable).not.toMatch(/Dilute it/);
+    // It should point at the evidence that decides whether anything is lost.
+    expect(mutable).toMatch(/bucket map/);
+  });
+
+  it('still tells an immutable batch to dilute, because that does fix it', () => {
+    expect(fullnessMessage(batch(24, 1, true), 'full')).toMatch(/Dilute it/);
   });
 
   it('names the batch so an alert is actionable', () => {

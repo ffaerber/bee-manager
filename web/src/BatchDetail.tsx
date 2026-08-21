@@ -637,9 +637,29 @@ function Vitals({ b, data, state, onDone }: {
 
   // The meter tracks the FULLEST bucket, not the average, because that is what
   // actually stops a write. Bytes stored are shown underneath as context.
-  const fullPct = Math.max(1, Math.min(100, b.utilizationRatio * 100));
-  const roomSev = b.utilizationRatio >= 1 ? 'critical'
-    : b.effective && b.utilizationRatio >= b.effective.diluteWhenUtilizationAbove ? 'warning' : 'good';
+  /**
+   * Fullness from the bucket map when we have it, not from /stamps.
+   *
+   * They disagree, and one of them is wrong. Bee's `utilization` counts stamps
+   * ISSUED into the fullest bucket and saturates at the bound; on a mutable
+   * batch, recycling means it never comes back down. `/buckets` reports what
+   * is actually STORED. The live gateway batch read utilization 16/16 = 100%
+   * while its fullest bucket held 13 of 16 — the tile showed "100.0%" directly
+   * above "fullest bucket 13 of 16", contradicting itself.
+   *
+   * The map is already loaded here to draw the background, so the honest
+   * figure is free. /stamps is the fallback only until it arrives.
+   */
+  const ratio = data && data.bucketUpperBound > 0
+    ? data.maxCollisions / data.bucketUpperBound
+    : b.utilizationRatio;
+  const fullPct = Math.max(1, Math.min(100, ratio * 100));
+  const roomSev = ratio >= 1
+    // A mutable batch at capacity is recycling its own oldest chunks, which is
+    // how it is designed to behave and is not an incident. Immutable at
+    // capacity refuses every further upload, batch-wide, and is.
+    ? (b.immutableFlag ? 'critical' : 'warning')
+    : b.effective && ratio >= b.effective.diluteWhenUtilizationAbove ? 'warning' : 'good';
 
   return (
     <div className="card">
@@ -688,7 +708,7 @@ function Vitals({ b, data, state, onDone }: {
             <i style={{ width: `${fullPct}%` }} />
           </span>
           <span style={{ fontSize: 22, fontWeight: 600, minWidth: 74, textAlign: 'right' }}>
-            {(b.utilizationRatio * 100).toFixed(1)}%
+            {(ratio * 100).toFixed(1)}%
           </span>
         </div>
         <div className="tile-sub">
