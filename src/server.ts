@@ -219,6 +219,14 @@ export function createServer(deps: ServerDeps) {
            * query the same observer for the same overlay.
            */
           reachability: r.reachability ?? null,
+          /**
+           * Public too: a node's stake and height are on-chain and already
+           * readable by anyone with its address. What it is configured to do
+           * with that stake is the interesting half, and both are facts about
+           * the node rather than about the operator's intentions.
+           */
+          stake: r.stake ?? null,
+          reserveCapacityDoubling: r.node?.reserveCapacityDoubling ?? null,
           chain: r.chain && { block: r.chain.block, price: r.chain.currentPrice.toString() },
           /** Fiat quote for BZZ, or null when unavailable. Never used in any calculation that spends. */
           fiat: price && {

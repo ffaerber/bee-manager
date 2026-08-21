@@ -23,7 +23,9 @@ export type AlertEvent =
   | 'quota_exceeded'
   | 'node_unreachable'
   /** Distinct from node_unreachable: WE can reach it, the NETWORK cannot. */
-  | 'node_undialable';
+  | 'node_undialable'
+  /** Staked height and configured reserve doubling disagree. */
+  | 'stake_height_mismatch';
 
 export interface Alert {
   event: AlertEvent;
@@ -36,7 +38,7 @@ export interface Alert {
 }
 
 /** Events that should re-fire immediately once the condition clears. */
-const CLEARABLE: AlertEvent[] = ['batch_low', 'wallet_low', 'node_unreachable', 'node_undialable'];
+const CLEARABLE: AlertEvent[] = ['batch_low', 'wallet_low', 'node_unreachable', 'node_undialable', 'stake_height_mismatch'];
 
 export class Alerter {
   constructor(

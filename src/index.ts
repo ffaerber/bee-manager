@@ -14,6 +14,7 @@ import { Poller } from './poller';
 import { createServer } from './server';
 import { PriceFeed } from './price';
 import { ReachabilityFeed } from './reachability';
+import { StakeFeed } from './staking';
 import { seedSettings } from './settings';
 import { readFileSync } from 'node:fs';
 
@@ -38,7 +39,16 @@ if (seeded.length) console.log(`[config] seeded ${seeded.length} settings from t
 const reachability = new ReachabilityFeed({
   enabled: !/^(0|false)$/i.test(process.env.REACHABILITY_ENABLED ?? 'true'),
 });
-const poller = new Poller(cfg, bee, db, alerter, reachability);
+/**
+ * On-chain stake, so the staked height can be checked against the reserve
+ * doubling the node actually runs with. Needs an RPC because Bee's own API
+ * reports the amount and not the height. GNOSIS_RPC_URL='' switches it off.
+ */
+const stakeFeed = new StakeFeed({
+  enabled: !/^(0|false)$/i.test(process.env.STAKE_CHECK_ENABLED ?? 'true'),
+  rpcUrl: process.env.GNOSIS_RPC_URL ?? 'https://rpc.gnosischain.com',
+});
+const poller = new Poller(cfg, bee, db, alerter, reachability, stakeFeed);
 /**
  * Docker swarm mounts secrets as files, so ADMIN_TOKEN_FILE is the way to keep
  * the token out of git and out of `docker service inspect`. ADMIN_TOKEN stays

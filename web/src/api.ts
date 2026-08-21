@@ -117,6 +117,10 @@ export interface State {
   /** Which build is serving this page. Stamped into the image by CI. */
   build?: Build;
   reachability?: Reachability | null;
+  /** Stake as the chain holds it. Null when unread or disabled. */
+  stake?: { address: string; effectiveBzz: number; height: number; fetchedAt: number } | null;
+  /** Reserve doubling the node is configured with. Must equal stake.height. */
+  reserveCapacityDoubling?: number | null;
   /**
    * True on the unauthenticated projection. Set by the server, not inferred
    * here, so the page cannot believe it has write access that the API will

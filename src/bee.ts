@@ -57,6 +57,14 @@ export interface NodeStatus {
    * overlay, and it is the one identifier that survives an IP change.
    */
   overlay?: string;
+  /**
+   * Reserve capacity doubling as this node is CONFIGURED to run.
+   *
+   * Must equal the height staked on-chain. Bee does not check that itself —
+   * the flag and the stake are set in different places, by different means,
+   * and nothing local notices when they drift apart.
+   */
+  reserveCapacityDoubling?: number;
   version?: string;
   apiVersion?: string;
   beeMode?: string;
@@ -252,6 +260,7 @@ export class BeeClient {
       if (cheque?.totalBalance != null) status.chequebookBalance = BigInt(cheque.totalBalance);
       if (cheque?.availableBalance != null) status.chequebookAvailable = BigInt(cheque.availableBalance);
       if (reserve?.storageRadius != null) status.storageRadius = reserve.storageRadius;
+      if (reserve?.reserveCapacityDoubling != null) status.reserveCapacityDoubling = reserve.reserveCapacityDoubling;
       if (topology?.connected != null) status.peers = topology.connected;
       if (settlements?.totalSent != null) status.settlementsSent = BigInt(settlements.totalSent);
       if (settlements?.totalReceived != null) status.settlementsReceived = BigInt(settlements.totalReceived);

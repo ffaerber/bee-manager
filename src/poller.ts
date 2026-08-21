@@ -12,6 +12,7 @@ import { BeeClient, BeeIndeterminateError, type Batch, type ChainState, type Nod
 import { Db } from './db';
 import { applySettings } from './settings';
 import { ReachabilityFeed, type Reachability } from './reachability';
+import { StakeFeed, heightMismatch, type StakeInfo } from './staking';
 import { Alerter } from './alerts';
 import { evaluateAll, findDisappeared, totalBurnPer30Days, totalCommitted, type EvalContext, type Plan } from './evaluate';
 import {
@@ -72,6 +73,8 @@ export interface PollResult {
    * Null when unknown, disabled, or unreadable — never assume reachable.
    */
   reachability?: Reachability | null;
+  /** Stake as the chain holds it, so it can be checked against the config. */
+  stake?: StakeInfo | null;
   /**
    * SWAP settlement health. Absent when the node has no chequebook, or when
    * the endpoints could not be read — the rest of the poll still stands.
@@ -163,6 +166,8 @@ export class Poller {
      * nothing here gates a spend on it.
      */
     private readonly reach?: ReachabilityFeed,
+    /** On-chain stake and height. Optional; nothing here gates a spend on it. */
+    private readonly stakeFeed?: StakeFeed,
   ) {}
 
   /**
@@ -336,6 +341,37 @@ export class Poller {
      * down is not evidence about the node, and crying wolf on a third party's
      * outage is how a real finding gets ignored.
      */
+    /**
+     * The stake, and whether it matches how the node is configured to run.
+     *
+     * Read after `wallet` because it is keyed by the node's own address.
+     */
+    const stake = wallet?.walletAddress
+      ? await this.stakeFeed?.get(wallet.walletAddress, now).catch(() => null) ?? null
+      : null;
+
+    /**
+     * Height and doubling are the same number set in two places, and nothing
+     * else notices when they disagree. Storing more than the stake covers is
+     * not a local fault: the node runs, reports a healthy reserve, and simply
+     * fails to win rounds or has its deposit frozen.
+     *
+     * Silent when either side is unknown — an unread stake is not evidence.
+     */
+    const drift = heightMismatch(stake, node?.reserveCapacityDoubling);
+    if (drift) {
+      await this.alerter.send({
+        event: 'stake_height_mismatch', level: 'warn',
+        message: `Staked height is ${drift.staked} but the node runs with ` +
+                 `reserve-capacity-doubling=${drift.configured}. These are the same setting in two ` +
+                 `places and must match: the reserve is 2^(22+n) chunks and the stake collateralises ` +
+                 `it. Nothing local reports this — the node keeps serving either way.`,
+        details: { stakedHeight: drift.staked, configuredDoubling: drift.configured },
+      });
+    } else if (stake && node?.reserveCapacityDoubling != null) {
+      await this.alerter.clear('stake_height_mismatch');
+    }
+
     if (reachability?.unreachable === true) {
       await this.alerter.send({
         event: 'node_undialable', level: 'warn',
@@ -355,7 +391,7 @@ export class Poller {
     }
 
     this.last = {
-      ok: true, batches, chain, wallet, node, plans, reachability,
+      ok: true, batches, chain, wallet, node, plans, reachability, stake,
       msPerBlock: this.msPerBlock,
       burnPer30DaysBzz: plurToBzz(burn),
       runwayDays,

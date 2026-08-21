@@ -150,7 +150,23 @@ export default function App() {
               reachable
             </span>
           )}
-          {state.reachability?.unreachable === true && (
+          {/* Height and reserve doubling are one setting kept in two places — a
+          contract call and a startup flag — and nothing else compares them.
+          Out of step, the node stores more than its stake covers and keeps
+          running: no local symptom, just rounds it cannot win. Shown to every
+          tier because both halves are facts about the node, and both are
+          already public on-chain. */}
+      {state.stake && state.reserveCapacityDoubling != null
+        && state.stake.height !== state.reserveCapacityDoubling && (
+        <div className="banner warn">
+          Staked height is <strong>{state.stake.height}</strong> but this node runs with
+          {' '}reserve-capacity-doubling=<strong>{state.reserveCapacityDoubling}</strong>.
+          {' '}They are the same setting in two places: the reserve is 2^(22+n) chunks and the
+          {' '}stake collateralises it. Nothing local reports this — the node serves either way.
+        </div>
+      )}
+
+      {state.reachability?.unreachable === true && (
             <span className="status critical" title={state.reachability.error ?? 'no inbound connection'}>
               undialable
             </span>
