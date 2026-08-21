@@ -54,3 +54,27 @@ describe('the public projection is what the page must survive', () => {
     expect(ttlSeverity(publicBatch.ttlDays, threshold)).toBe('good');
   });
 })
+
+/**
+ * A missing number must read as missing, never as a corrupt one.
+ *
+ * The public tier omits several byte fields (maxUploadBytes, freeChunks). An
+ * unguarded fmtBytes rendered "NaN undefined" on the live batch page — the
+ * same shape as the effective/topupWhenTtlBelowSec crash: a tier drops a
+ * field and a reader assumes it is there.
+ */
+import { fmtBytes } from '../web/src/format';
+
+describe('formatting an absent byte count', () => {
+  it('renders an em dash rather than NaN', () => {
+    expect(fmtBytes(undefined)).toBe('—');
+    expect(fmtBytes(null)).toBe('—');
+    expect(fmtBytes(NaN)).toBe('—');
+  });
+
+  it('still formats real figures', () => {
+    expect(fmtBytes(0)).toBe('0 B');
+    expect(fmtBytes(577536)).toBe('578 KB');
+    expect(fmtBytes(4294967296)).toBe('4.29 GB');
+  });
+})

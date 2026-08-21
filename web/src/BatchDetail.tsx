@@ -152,6 +152,12 @@ export function BatchDetail({ batchId, state, onChange }: {
         {batch?.managed && !api.isReadOnly() && batch.effective &&
           <Policy b={batch} state={state!} onChange={onChange} />}
 
+        {/* Its own card, and deliberately NOT gated on `managed`: a key grants
+            uploads to this batch, which is unrelated to whether the service
+            renews it. An unmanaged batch you are deliberately letting lapse is
+            still one you may want to write to while it lasts. */}
+        {batch && <ApiKeys batchId={batch.batchID} />}
+
         {!data && !err && <div className="card"><p className="muted">Reading 65,536 buckets…</p></div>}
 
         {data && (
@@ -204,8 +210,15 @@ export function BatchDetail({ batchId, state, onChange }: {
 
         {/* Last on the page, and one card rather than two sections inside the
             bucket panel: putting a file somewhere and seeing what is already
-            there are the same task, and neither is why you open this page. */}
-        {data && (
+            there are the same task, and neither is why you open this page.
+
+            Admin only. Uploading needs a token, and the upload history is not
+            public — but the concrete reason it is hidden rather than disabled
+            is that the public buckets payload omits maxUploadBytes and
+            freeChunks, so this card rendered "Up to NaN undefined" for a
+            read-only visitor. Same shape as the batch page crash: the tier
+            drops a field and a reader assumes it. */}
+        {data && !api.isReadOnly() && (
           <div className="card">
             <h2 style={{ marginBottom: 10 }}>Files</h2>
 
@@ -511,8 +524,6 @@ function Policy({ b, state, onChange }: {
   return (
     <div className="card">
       <div className="spread" style={{ marginBottom: 10 }}>
-        <ApiKeys batchId={b.batchID} />
-
         <h2>Policy for this batch</h2>
         {saved && <span className="status good">saved</span>}
       </div>
@@ -1100,6 +1111,8 @@ function ApiKeys({ batchId }: { batchId: string }) {
   const [keys, setKeys] = useState<api.ApiKey[]>([]);
   const [name, setName] = useState('');
   const [fresh, setFresh] = useState<{ name: string; key: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const load = useCallback(() => {
@@ -1107,74 +1120,118 @@ function ApiKeys({ batchId }: { batchId: string }) {
   }, [batchId]);
   useEffect(() => { if (!api.isReadOnly()) load(); }, [load]);
 
+  // Hidden rather than disabled: a control that looks available and 401s is
+  // worse than one that was never offered.
   if (api.isReadOnly()) return null;
 
-  return (
-    <>
-      <h2>Upload keys</h2>
-      {/* Scoped to THIS batch and nothing else: a key names its batch, and the
-          server ignores any batch id a caller supplies. That is what makes it
-          safe to paste into a GitHub repo — the worst a leaked key can do is
-          fill the batch it was already entitled to fill. */}
-      <p className="secondary" style={{ marginBottom: 12 }}>
-        For CI. Each key uploads to this batch only and can be revoked on its own — add a new
-        one, update the pipeline, then revoke the old.
-      </p>
+  const live = keys.filter((k) => !k.revokedAt);
+  const revoked = keys.filter((k) => k.revokedAt);
 
+  return (
+    <div className="card">
+      <div className="card-head">
+        <h2>Upload keys</h2>
+        <p className="muted" style={{ fontSize: 12 }}>
+          For pipelines. A key uploads to <em>this</em> batch and no other — the server ignores
+          any batch id the caller sends, so the worst a leaked key can do is fill the batch it
+          was already entitled to fill.
+        </p>
+      </div>
+
+      {/* The only moment the secret exists in the UI. Given its own block
+          rather than a toast: it cannot be recovered, so it must not be
+          possible to lose it by clicking elsewhere. */}
       {fresh && (
-        <div className="banner" style={{ marginBottom: 12 }}>
-          <div className="field">New key · {fresh.name}</div>
-          <code style={{ wordBreak: 'break-all', display: 'block', margin: '6px 0' }}>{fresh.key}</code>
-          <div className="row" style={{ gap: 8 }}>
-            <button type="button" onClick={() => navigator.clipboard?.writeText(fresh.key)}>Copy</button>
+        <div style={{
+          border: '1px solid var(--good)', padding: '16px 18px', marginBottom: 20,
+        }}>
+          <div className="spread" style={{ marginBottom: 10 }}>
+            <span className="status good">new key · {fresh.name}</span>
             <button type="button" onClick={() => setFresh(null)}>Done</button>
           </div>
-          <p className="muted" style={{ marginTop: 6 }}>
-            Only the hash is stored — this is the last time it can be shown. Lost keys are
-            reissued, not recovered.
-          </p>
+          <code style={{
+            display: 'block', wordBreak: 'break-all', fontSize: 13,
+            padding: '10px 12px', background: 'var(--surface-solid)', marginBottom: 10,
+          }}>{fresh.key}</code>
+          <div className="row" style={{ gap: 10, alignItems: 'center' }}>
+            <button type="button" className="primary" onClick={() => {
+              navigator.clipboard?.writeText(fresh.key);
+              setCopied(true); setTimeout(() => setCopied(false), 2000);
+            }}>{copied ? 'Copied' : 'Copy key'}</button>
+            <span className="muted" style={{ fontSize: 12 }}>
+              Only the hash is stored — this is the last time it can be shown.
+            </span>
+          </div>
         </div>
       )}
 
-      <form className="row" style={{ gap: 8, marginBottom: 12 }}
+      <form className="row" style={{ gap: 10, marginBottom: err ? 12 : 20 }}
         onSubmit={async (e) => {
-          e.preventDefault(); setErr(null);
+          e.preventDefault(); setErr(null); setBusy(true);
           try {
             const k = await api.createKey(batchId, name.trim());
             setFresh({ name: k.name, key: k.key }); setName(''); load();
-          } catch (er: any) { setErr(er.message); }
+          } catch (er: any) { setErr(er.message); } finally { setBusy(false); }
         }}>
-        <input value={name} placeholder="name, e.g. pinkchainsaw-ci"
-          style={{ flex: 1, minWidth: 200 }}
+        <input value={name} placeholder="name it after where it lives, e.g. pinkchainsaw-ci"
+          style={{ flex: 1, minWidth: 240 }}
           onChange={(e) => setName(e.target.value)} />
-        <button className="primary" type="submit" disabled={!name.trim()}>Create key</button>
+        <button className="primary" type="submit" disabled={!name.trim() || busy}>
+          {busy ? 'Creating…' : 'Create key'}
+        </button>
       </form>
-      {err && <div className="warn err" style={{ marginBottom: 12 }}>{err}</div>}
+      {err && <div className="warn err" style={{ marginBottom: 20 }}>{err}</div>}
 
-      {keys.length > 0 ? (
-        <table className="rows">
-          <thead><tr><th>Name</th><th>Created</th><th>Last used</th><th /></tr></thead>
-          <tbody>
-            {keys.map((k) => (
-              <tr key={k.id} style={k.revokedAt ? { opacity: 0.45 } : undefined}>
-                <td>{k.name}{k.revokedAt ? ' · revoked' : ''}</td>
-                <td className="muted">{new Date(k.createdAt).toLocaleDateString()}</td>
-                {/* "never" is worth showing: it usually means the key was issued
-                    and never wired up, or the pipeline is still on an older one. */}
-                <td className="muted">{k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString() : 'never'}</td>
-                <td style={{ textAlign: 'right' }}>
-                  {!k.revokedAt && (
-                    <button type="button" onClick={async () => {
-                      await api.revokeKey(k.id).catch((er: any) => setErr(er.message));
-                      load();
-                    }}>Revoke</button>
-                  )}
-                </td>
+      {keys.length === 0 ? (
+        <p className="muted" style={{ fontSize: 13 }}>
+          No keys yet. Create one to upload from CI without giving it the admin token —
+          which could spend.
+        </p>
+      ) : (
+        <div className="scroll-x">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th><th>Created</th><th>Last used</th><th />
               </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : <p className="muted">No keys yet.</p>}
-    </>
+            </thead>
+            <tbody>
+              {[...live, ...revoked].map((k) => (
+                <tr key={k.id} style={k.revokedAt ? { opacity: 0.4 } : undefined}>
+                  <td>
+                    {k.name}
+                    {k.revokedAt && <span className="muted" style={{ marginLeft: 8, fontSize: 11 }}>revoked</span>}
+                  </td>
+                  <td className="muted">{new Date(k.createdAt).toLocaleDateString()}</td>
+                  {/* "never" is worth showing plainly: it usually means the key
+                      was issued and never wired up, or the pipeline is still on
+                      an older one — the thing you want to know before revoking. */}
+                  <td className="muted">
+                    {k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString() : 'never used'}
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    {!k.revokedAt && (
+                      <button type="button" onClick={async () => {
+                        await api.revokeKey(k.id).catch((er: any) => setErr(er.message));
+                        load();
+                      }}>Revoke</button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Rotation is add-then-revoke, which only works if you can see how. */}
+      {live.length > 0 && (
+        <p className="muted" style={{ fontSize: 12, marginTop: 18 }}>
+          In CI, set <code>BEE_API_URL</code> to this service and <code>BEE_API_KEY</code> to the
+          key. To rotate: create a second key, update the pipeline, then revoke the first —
+          revoking takes effect on the next request.
+        </p>
+      )}
+    </div>
   );
 }

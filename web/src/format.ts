@@ -49,7 +49,15 @@ export function countdown(ms: number): { days: number; clock: string; done: bool
 }
 
 /** Decimal units (kB = 1000), matching how storage is normally quoted. */
-export function fmtBytes(n: number): string {
+/**
+ * Bytes, or an em dash when the figure is absent.
+ *
+ * Not defensive decoration: the public tier omits several byte fields, and an
+ * unguarded call rendered "NaN undefined" on a live page. A missing number
+ * should read as missing, never as a corrupt one.
+ */
+export function fmtBytes(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return '—';
   if (n === 0) return '0 B';
   const u = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
   const i = Math.min(Math.floor(Math.log10(n) / 3), u.length - 1);
