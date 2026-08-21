@@ -110,3 +110,53 @@ describe('being a good citizen upstream', () => {
     expect(calls()).toBe(2);
   });
 });
+
+/**
+ * The observer's own backoff is not a fact about the node.
+ *
+ * libp2p keeps a per-peer circuit breaker: after some failures it stops
+ * dialling for a window and fails instantly with "breaker closed" — reported
+ * as unreachable=true, indistinguishable from a real failure unless you look
+ * at the duration. A genuine timeout takes seconds; a breaker refusal takes
+ * microseconds.
+ *
+ * This shipped wrong once. The gateway showed "undialable" on the dashboard
+ * while its port was accepting connections, on the strength of a 14µs
+ * "breaker closed". Asserting a fault from an observer that never touched the
+ * network is the crying-wolf the whole module is written to avoid.
+ */
+describe('telling a refusal apart from a failure', () => {
+  const mk = (body: any) => new ReachabilityFeed({
+    baseUrl: 'http://x', timeoutMs: 100,
+    fetchImpl: (async () => new Response(JSON.stringify(body), { status: 200 })) as any,
+  });
+
+  it('reports unknown when the observer declined to dial', async () => {
+    const r = await mk({
+      overlay: OVERLAY, unreachable: true,
+      error: 'network status unknown: breaker closed',
+      handshakeDurationMilliseconds: 0,
+      userAgent: 'bee/2.8.1-7cf53193',
+    }).get(OVERLAY);
+    expect(r!.unreachable).toBeNull();
+    // The reason is still carried, so the UI can explain the gap if it wants.
+    expect(r!.error).toMatch(/breaker/);
+  });
+
+  it('still reports a real dial failure', async () => {
+    // Seconds, and an error naming the address actually tried.
+    const r = await mk({
+      overlay: OVERLAY, unreachable: true,
+      error: 'dial tcp4 62.228.26.141:1634: i/o timeout',
+      handshakeDurationMilliseconds: 5012,
+    }).get(OVERLAY);
+    expect(r!.unreachable).toBe(true);
+  });
+
+  it('leaves a successful reading alone however fast it was', async () => {
+    // Only a claimed failure is ever reinterpreted; a quick handshake is a
+    // good sign, not a suspicious one.
+    const r = await mk({ overlay: OVERLAY, handshakeDurationMilliseconds: 0, userAgent: 'bee/2.8.1' }).get(OVERLAY);
+    expect(r!.unreachable).toBe(false);
+  });
+});

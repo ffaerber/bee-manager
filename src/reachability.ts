@@ -136,16 +136,44 @@ export class ReachabilityFeed {
 
       const ms = Number(b?.handshakeDurationMilliseconds);
       const checked = Date.parse(b?.lastCheckTime ?? '');
+      const err = firstLine(b?.error);
+
+      /**
+       * Did the observer actually try?
+       *
+       * libp2p keeps a circuit breaker per peer: after some failed dials it
+       * stops attempting for a backoff window and fails instantly with
+       * "breaker closed". That is the OBSERVER's state, not the node's — and
+       * it arrives as unreachable=true, which is indistinguishable from a real
+       * failure unless you look at the duration. A genuine timeout takes
+       * seconds; a breaker refusal takes microseconds.
+       *
+       * Seen live: the gateway reported unreachable=true, "breaker closed",
+       * handshake 14.563µs, while carrying a userAgent from a previous
+       * successful handshake and accepting TCP on 1634 at that very moment.
+       * Reporting that as undialable is precisely the crying-wolf this file
+       * exists to avoid, so a refusal that never touched the network is
+       * unknown, not a finding.
+       *
+       * Only ever reinterprets a CLAIMED FAILURE. A successful reading is left
+       * alone whatever its duration, or a fast handshake would be turned into
+       * a question mark.
+       */
+      const claimsFailure = b?.unreachable === true;
+      const declined = claimsFailure
+        && (/breaker/i.test(err ?? '') || (Number.isFinite(ms) && ms < 1));
+
       return (this.cached = {
         overlay,
         // Absent means reachable upstream: the field is only set on failure.
         // Coerced explicitly so `undefined` cannot read as "unknown" when it
         // actually means the dial worked.
-        unreachable: typeof b?.unreachable === 'boolean' ? b.unreachable : false,
+        unreachable: declined ? null
+          : typeof b?.unreachable === 'boolean' ? b.unreachable : false,
         handshakeMs: Number.isFinite(ms) ? ms : null,
         userAgent: typeof b?.userAgent === 'string' ? b.userAgent : null,
         lastCheckedAt: Number.isFinite(checked) ? checked : null,
-        error: firstLine(b?.error),
+        error: err,
         fetchedAt: now,
       });
     } catch {
