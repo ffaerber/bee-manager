@@ -127,6 +127,48 @@ export default function App() {
       <div className="spread" style={{ marginBottom: 16 }}>
         <h1 className="brand">Swarm stamp monitor</h1>
         <div className="row" style={{ gap: 12, alignItems: 'center' }}>
+          {/*
+            Two standing facts, back on the index.
+            
+            They were moved to /settings on the grounds that steady state needs
+            no announcement. That holds for things this service controls — but
+            reachability is not one of them: it is decided by a router and a
+            DNS record, it changes without anyone touching this app, and it has
+            no local symptom. The homelab node was undialable for six weeks
+            while reporting a full peer table. A fact that can go wrong
+            silently is exactly the one worth a permanent chip.
+            
+            Auto top-up sits beside it for the opposite reason: it is the
+            single setting that decides whether any of this is load-bearing or
+            just a viewer, and reading it should not require a second page.
+          */}
+          {state.reachability?.unreachable === false && (
+            <span className="status good" title={
+              `Peers can dial this node${state.reachability.handshakeMs != null
+                ? ` — handshake ${state.reachability.handshakeMs} ms` : ''}` +
+              `${state.reachability.userAgent ? ` · ${state.reachability.userAgent}` : ''}`}>
+              reachable
+            </span>
+          )}
+          {state.reachability?.unreachable === true && (
+            <span className="status critical" title={state.reachability.error ?? 'no inbound connection'}>
+              undialable
+            </span>
+          )}
+          {/* Absent when unknown: no chip at all rather than a reassuring one.
+              An observer being down is not evidence that the node is fine. */}
+
+          {/* config is withheld from the public tier, so a read-only visitor
+              is shown nothing here rather than a guess at someone else's
+              automation. */}
+          {state.config && (
+            <span className={`status ${armed ? 'good' : 'warning'}`}
+              title={armed
+                ? 'Managed batches are renewed automatically, within the configured caps'
+                : `Nothing is renewed automatically (${!state.config.autoTopupEnabled ? 'AUTO_TOPUP_ENABLED=false' : 'DRY_RUN=true'})`}>
+              auto top-up {armed ? 'on' : 'off'}
+            </span>
+          )}
           {/* Which build is answering. The page and the service ship together,
               so one stamp covers both — and it is the server's, not the
               bundle's, so a cached page shows the version it was cached from
