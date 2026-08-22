@@ -176,17 +176,6 @@ export default function App() {
           {/* Absent when unknown: no chip at all rather than a reassuring one.
               An observer being down is not evidence that the node is fine. */}
 
-          {/* config is withheld from the public tier, so a read-only visitor
-              is shown nothing here rather than a guess at someone else's
-              automation. */}
-          {state.config && (
-            <span className={`status ${armed ? 'good' : 'warning'}`}
-              title={armed
-                ? 'Managed batches are renewed automatically, within the configured caps'
-                : `Nothing is renewed automatically (${!state.config.autoTopupEnabled ? 'AUTO_TOPUP_ENABLED=false' : 'DRY_RUN=true'})`}>
-              auto top-up {armed ? 'on' : 'off'}
-            </span>
-          )}
           {/* Which build is answering. The page and the service ship together,
               so one stamp covers both — and it is the server's, not the
               bundle's, so a cached page shows the version it was cached from
@@ -296,7 +285,18 @@ export default function App() {
  */
 const CLOCK_BELOW_MS = 48 * 3_600_000;
 
-function Runway({ days, sev, ageMs }: { days: number | null; sev: string; ageMs: number }) {
+function Runway({ days, sev, ageMs, inline = false }: {
+  days: number | null; sev: string; ageMs: number;
+  /**
+   * Sized as a section total rather than the page hero.
+   *
+   * There is one hero per view and this is no longer it: the figure sits under
+   * the batch list it summarises, where 76px would shout over the thing it is
+   * summarising.
+   */
+  inline?: boolean;
+}) {
+  const size = inline ? ' is-inline' : '';
   const anchor = useMemo(() => ({ at: Date.now(), days, ageMs }), [days, ageMs]);
   const [, tick] = useState(0);
 
@@ -327,7 +327,7 @@ function Runway({ days, sev, ageMs }: { days: number | null; sev: string; ageMs:
   // `== null` rather than isFinite(): the global isFinite coerces null to 0 and
   // would send an unbounded runway down the counting path as zero.
   if (anchor.days == null || !Number.isFinite(anchor.days)) {
-    return <div className={`hero-value ${sev}`}>∞<span className="hero-unit">days</span></div>;
+    return <div className={`hero-value ${sev}${size}`}>∞<span className="hero-unit">days</span></div>;
   }
 
   const title = 'Wallet plus the value already paid into the batches, divided by the burn rate. '
@@ -339,7 +339,7 @@ function Runway({ days, sev, ageMs }: { days: number | null; sev: string; ageMs:
   // Far out: the day count is the whole reading.
   if (!close) {
     return (
-      <div className={`hero-value ${sev}`} title={title}>
+      <div className={`hero-value ${sev}${size}`} title={title}>
         {d.toLocaleString()}
         <span className="hero-unit">{d === 1 ? 'day' : 'days'}</span>
       </div>
@@ -350,7 +350,7 @@ function Runway({ days, sev, ageMs }: { days: number | null; sev: string; ageMs:
   // page, so the clock becomes the headline instead of sitting beside one.
   if (d === 0) {
     return (
-      <div className={`hero-value is-clock ${sev}`} title={title}>
+      <div className={`hero-value is-clock ${sev}${size}`} title={title}>
         {clock}
         {done && <span className="hero-unit">spent</span>}
       </div>
@@ -358,7 +358,7 @@ function Runway({ days, sev, ageMs }: { days: number | null; sev: string; ageMs:
   }
 
   return (
-    <div className={`hero-value ${sev}`} title={title}>
+    <div className={`hero-value ${sev}${size}`} title={title}>
       {d.toLocaleString()}
       <span className="hero-unit">d</span>
       <span className="hero-clock">{clock}</span>
@@ -487,43 +487,26 @@ function Batches({ state, onChange }: { state: State; onChange: () => void }) {
     const usd = usdOf(bzz, state.fiat);
     return usd == null ? undefined : `≈ $${usd < 10 ? usd.toFixed(2) : Math.round(usd).toLocaleString()}`;
   };
+  const armedHere = !!state.config && state.config.autoTopupEnabled && !state.config.dryRun;
+
   return (
     <div className="card">
-      {/* Runway leads this card because it is a fact ABOUT the batches: it
-          counts down the prepaid value in them plus the wallet that can renew
-          them. It had its own card above, which put the headline figure and
-          the list it describes in two separate panels. */}
-      <div className="spread" style={{ alignItems: 'flex-end', marginBottom: 16 }}>
-        <div>
-          <div className="hero-label">Runway until everything lapses</div>
-          <Runway days={runway} sev={sev} ageMs={state.dataAgeMs} />
-          <div className={`status ${sev}`} style={{ marginTop: 14 }}>
-            {runway == null ? 'nothing is burning'
-              : runway < 1 ? 'under a day'
-              : runway < 2 ? 'under two days'
-              : runway < 7 ? 'under a week'
-              : runway < 30 ? 'under a month'
-              : runway < 90 ? 'under three months'
-              : 'comfortable'}
-          </div>
+
+      <div className="spread" style={{ marginBottom: 12 }}>
+        <div className="row" style={{ gap: 12, alignItems: 'center' }}>
+          <h2>Batches</h2>
+          {/* The setting that decides whether this list is maintained or merely
+              watched, next to the list it applies to rather than in the page
+              header. Withheld from the public tier, which is told no config. */}
+          {state.config && (
+            <span className={`status ${armedHere ? 'good' : 'warning'}`}
+              title={armedHere
+                ? 'Managed batches are topped up automatically, within the caps'
+                : `Nothing is topped up (${!state.config.autoTopupEnabled ? 'AUTO_TOPUP_ENABLED=false' : 'DRY_RUN=true'})`}>
+              auto top-up {armedHere ? 'on' : 'off'}
+            </span>
+          )}
         </div>
-      </div>
-
-      <div className="tiles" style={{ marginBottom: 22 }}>
-        <Tile label="Wallet runway"
-          value={state.runwayDays == null ? '∞' : Math.round(state.runwayDays).toLocaleString()}
-          unit={state.runwayDays == null ? undefined : 'd'}
-          sub={state.runwayDays == null ? 'nothing is burning' : 'funds future top-ups'} />
-        <Tile label="Burn rate per 30 days" value={state.burnPer30DaysBzz.toFixed(2)} unit={TOKEN}
-          fiat={fiat(state.burnPer30DaysBzz)} />
-        <Tile label="Prepaid in batches" value={state.committedBzz.toFixed(2)} unit={TOKEN}
-          fiat={fiat(state.committedBzz)} />
-        {/* No "Batches: n" tile: the list immediately below is the count, and
-            two places to read it is two places for it to disagree. */}
-      </div>
-
-      <div className="spread" style={{ marginBottom: 12, marginTop: 22 }}>
-        <h2>Batches</h2>
         <div className="row" style={{ gap: 16 }}>
           {/* One key for both tables, so it is not repeated per section. */}
           <span className="row muted" style={{ gap: 12, flexWrap: 'nowrap', fontSize: 12 }}>
@@ -582,6 +565,43 @@ function Batches({ state, onChange }: { state: State; onChange: () => void }) {
         </Modal>
       )}
       {state.plans && <Plans plans={state.plans} batches={state.batches} />}
+
+      <div style={{ borderTop: '1px solid var(--grid)', marginTop: 26, paddingTop: 22 }}>
+      {/* Below the list, not above it.
+
+          The list is what you came to read; this is the summary of it, and a
+          summary above its own subject makes you scroll past the answer to
+          find the question. It is also no longer the page hero -- there is one
+          per view and this card no longer holds it -- so the figure is sized
+          as a section total rather than a headline. */}
+      <div className="spread" style={{ alignItems: 'flex-end', marginBottom: 16 }}>
+        <div>
+          <div className="hero-label">Runway until everything lapses</div>
+          <Runway days={runway} sev={sev} ageMs={state.dataAgeMs} inline />
+          <div className={`status ${sev}`} style={{ marginTop: 14 }}>
+            {runway == null ? 'nothing is burning'
+              : runway < 1 ? 'under a day'
+              : runway < 2 ? 'under two days'
+              : runway < 7 ? 'under a week'
+              : runway < 30 ? 'under a month'
+              : runway < 90 ? 'under three months'
+              : 'comfortable'}
+          </div>
+        </div>
+      </div>
+      <div className="tiles" style={{ marginBottom: 22 }}>
+        <Tile label="Wallet runway"
+          value={state.runwayDays == null ? '∞' : Math.round(state.runwayDays).toLocaleString()}
+          unit={state.runwayDays == null ? undefined : 'd'}
+          sub={state.runwayDays == null ? 'nothing is burning' : 'funds future top-ups'} />
+        <Tile label="Burn rate per 30 days" value={state.burnPer30DaysBzz.toFixed(2)} unit={TOKEN}
+          fiat={fiat(state.burnPer30DaysBzz)} />
+        <Tile label="Prepaid in batches" value={state.committedBzz.toFixed(2)} unit={TOKEN}
+          fiat={fiat(state.committedBzz)} />
+        {/* No "Batches: n" tile: the list immediately below is the count, and
+            two places to read it is two places for it to disagree. */}
+      </div>
+      </div>
     </div>
   );
 }

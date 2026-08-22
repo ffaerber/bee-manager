@@ -186,6 +186,22 @@ h2 { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
 .hero-value.good { text-shadow: 0 0 40px rgba(127, 227, 196, 0.30); }
 .hero-value.warning { text-shadow: 0 0 40px rgba(250, 178, 25, 0.35); }
 .hero-value.critical { text-shadow: 0 0 44px rgba(236, 48, 19, 0.42); }
+/* A hero that is not THE hero.
+
+   The runway now sits under the batch list it summarises rather than at the
+   top of the page. Same figure, same colour, but 76px next to a table reads as
+   shouting over the thing it describes — and "exactly one per view" only holds
+   if the exceptions are sized differently. */
+.hero-value.is-inline {
+  font-size: 40px; line-height: 1; letter-spacing: -0.03em;
+  text-shadow: 0 0 26px rgba(232, 231, 238, 0.18);
+}
+.hero-value.is-inline.good { text-shadow: 0 0 26px rgba(127, 227, 196, 0.26); }
+.hero-value.is-inline.warning { text-shadow: 0 0 26px rgba(250, 178, 25, 0.30); }
+.hero-value.is-inline.critical { text-shadow: 0 0 28px rgba(236, 48, 19, 0.36); }
+.hero-value.is-inline .hero-unit { font-size: 14px; margin-left: 8px; }
+.hero-value.is-inline .hero-clock { font-size: 22px; }
+
 .hero-unit { font-size: 18px; color: var(--text-secondary); font-weight: 400; margin-left: 10px; letter-spacing: 0; }
 
 /* The ticking half of the hero. Smaller than the day count because the day
