@@ -56,6 +56,16 @@ const stakeFeed = new StakeFeed({
  */
 const peerMap = new PeerMapFeed(db, {
   enabled: !/^(0|false)$/i.test(process.env.PEER_MAP_ENABLED ?? 'true'),
+  self: {
+    /**
+     * Placing this node means publishing roughly where it is: a home node's
+     * public IP geolocates to its town, and /api/public/state needs no
+     * credentials. Every peer that dials the node already learns the address,
+     * but an open endpoint is harvestable by someone who never joined the
+     * network. PEER_MAP_SELF=false turns the lookup off entirely.
+     */
+    enabled: !/^(0|false)$/i.test(process.env.PEER_MAP_SELF ?? 'true'),
+  },
 });
 const poller = new Poller(cfg, bee, db, alerter, reachability, stakeFeed, peerMap);
 /**

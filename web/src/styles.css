@@ -351,6 +351,37 @@ tr:last-child td { border-bottom: none; }
    value to every dot and flatten the counts back out. */
 .peer-dot { fill: var(--good); fill-opacity: 0.85; }
 
+/* This node. Blue against the peers' green — a pair checked for colour-vision
+   separation rather than assumed (deutan ΔE 18.8, normal 19.5). Colour is not
+   load-bearing on its own: it is also the only ringed mark, the largest, and
+   the point every link converges on. */
+.self-dot {
+  fill: var(--map-mid);
+  stroke: var(--surface-solid);
+  stroke-width: 1.2;
+}
+
+/* Links to peers. Faint on purpose — they show that this node is the hub, and
+   at 100+ peers a confident stroke would be a ball of yarn over the map. */
+.peer-link { stroke: var(--map-mid); stroke-opacity: 0.28; fill: none; }
+
+/* The "you are here" ring. Stroked, never filled: a filled disc would join
+   the count-based size scale the peer dots use and imply a magnitude. */
+.self-halo {
+  fill: none;
+  stroke: var(--map-mid);
+  stroke-width: 1;
+  stroke-opacity: 0.55;
+}
+
+/* Legend swatches. */
+.map-key {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  margin-right: 6px; vertical-align: middle;
+}
+.map-key.is-self { background: var(--map-mid); }
+.map-key.is-peer { background: var(--good); }
+
 /* Meter: thin, neutral track, lit fill.
    The track stays one grey at every severity. It used to be a washed step of
    the fill's own ramp, on the theory that state should read across the whole

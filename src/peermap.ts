@@ -24,6 +24,7 @@
  */
 
 import type { Db, PeerLocation } from './db';
+import { SelfLocationFeed, type SelfLocOptions } from './selfloc';
 
 export interface PeerMapOptions {
   enabled?: boolean;
@@ -36,6 +37,8 @@ export interface PeerMapOptions {
   timeoutMs?: number;
   fetchImpl?: typeof fetch;
   baseUrl?: string;
+  /** Passed through to the self-location feed; see selfloc.ts. */
+  self?: SelfLocOptions;
 }
 
 export interface PeerMapState {
@@ -47,6 +50,11 @@ export interface PeerMapState {
   pending: number;
   /** Asked about and genuinely unplaceable — the observer has no location. */
   unplaceable: number;
+  /**
+   * This node, when it can be placed from a real reading. Null when it cannot
+   * — the map then draws no marker and no lines rather than a guessed one.
+   */
+  self?: PeerLocation | null;
 }
 
 export class PeerMapFeed {
@@ -55,6 +63,7 @@ export class PeerMapFeed {
   private readonly timeoutMs: number;
   private readonly fetchImpl: typeof fetch;
   private readonly baseUrl: string;
+  private readonly selfFeed: SelfLocationFeed;
 
   constructor(private readonly db: Db, opts: PeerMapOptions = {}) {
     this.enabled = opts.enabled ?? true;
@@ -62,6 +71,11 @@ export class PeerMapFeed {
     this.timeoutMs = opts.timeoutMs ?? 8_000;
     this.fetchImpl = opts.fetchImpl ?? fetch;
     this.baseUrl = (opts.baseUrl ?? 'https://api.swarmscan.io').replace(/\/+$/, '');
+    // Inherits enabled: with the map off, nothing about this node is looked
+    // up or published either.
+    this.selfFeed = new SelfLocationFeed({
+      enabled: this.enabled, fetchImpl: this.fetchImpl, ...opts.self,
+    });
   }
 
   /**
@@ -70,11 +84,17 @@ export class PeerMapFeed {
    * Never throws: a map is decoration, and a failed lookup must not cost a
    * poll cycle that also renews postage.
    */
-  async tick(connectedOverlays: string[]): Promise<PeerMapState> {
+  async tick(
+    connectedOverlays: string[],
+    /** This node's own identity and advertised addresses, for placing it. */
+    me?: { overlay?: string; underlay?: string[] },
+  ): Promise<PeerMapState> {
     const connected = connectedOverlays.length;
     if (!this.enabled) {
-      return { located: [], connected, pending: 0, unplaceable: 0 };
+      return { located: [], connected, pending: 0, unplaceable: 0, self: null };
     }
+
+    const self = await this.selfFeed.get(me?.overlay, me?.underlay).catch(() => null);
 
     const known = this.db.peerLocationKnown();
     const unknown = connectedOverlays.filter((o) => !known.has(o));
@@ -123,6 +143,7 @@ export class PeerMapFeed {
       connected,
       pending: stillUnknown,
       unplaceable: connected - located.length - stillUnknown,
+      self,
     };
   }
 }

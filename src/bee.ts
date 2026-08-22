@@ -58,6 +58,13 @@ export interface NodeStatus {
    */
   overlay?: string;
   /**
+   * Every address this node advertises — LAN, docker bridges, loopback and
+   * the real WAN one together. Kept whole rather than pre-filtered because
+   * "which of these is public" is a judgement, and it belongs next to the
+   * code that needs the answer.
+   */
+  underlay?: string[];
+  /**
    * Reserve capacity doubling as this node is CONFIGURED to run.
    *
    * Must equal the height staked on-chain. Bee does not check that itself —
@@ -268,6 +275,9 @@ export class BeeClient {
       ]);
       if (node) { status.beeMode = node.beeMode; status.chequebookEnabled = node.chequebookEnabled; }
       if (typeof addresses?.overlay === 'string') status.overlay = addresses.overlay;
+      if (Array.isArray(addresses?.underlay)) {
+        status.underlay = addresses.underlay.filter((a: unknown) => typeof a === 'string');
+      }
       if (stake?.stakedAmount != null) status.stakedAmount = BigInt(stake.stakedAmount);
       if (cheque?.totalBalance != null) status.chequebookBalance = BigInt(cheque.totalBalance);
       if (cheque?.availableBalance != null) status.chequebookAvailable = BigInt(cheque.availableBalance);

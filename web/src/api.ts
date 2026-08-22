@@ -145,6 +145,8 @@ export interface State {
   peerMap?: {
     located: { overlay: string; country: string | null; city: string | null; lat: number; lon: number }[];
     connected: number; pending: number; unplaceable: number;
+    /** This node, when it could be placed from a real reading. */
+    self?: { overlay: string; country: string | null; city: string | null; lat: number; lon: number } | null;
   } | null;
   /**
    * True on the unauthenticated projection. Set by the server, not inferred

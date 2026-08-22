@@ -370,7 +370,7 @@ export class Poller {
      */
     const peerMap = this.peerMap
       ? await this.bee.peers()
-          .then((o) => this.peerMap!.tick(o))
+          .then((o) => this.peerMap!.tick(o, { overlay: node?.overlay, underlay: node?.underlay }))
           .catch(() => null)
       : null;
 
