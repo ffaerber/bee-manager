@@ -80,7 +80,7 @@ export default function App() {
     const disabled = /disabled/i.test(err ?? '');
     return (
       <div className="wrap">
-        <h1 className="brand">Swarm stamp monitor</h1>
+        <h1 className="brand">Bee manager</h1>
         <div className="card" style={{ maxWidth: 520 }}>
           <h2 style={{ marginBottom: 12 }}>{disabled ? 'Admin API disabled' : 'Admin token required'}</h2>
           {disabled ? (
@@ -126,7 +126,7 @@ export default function App() {
           live on /settings. What is left here is the batches — the header
           carries identity and the way out, nothing that needs reading. */}
       <div className="spread" style={{ marginBottom: 16 }}>
-        <h1 className="brand">Swarm stamp monitor</h1>
+        <h1 className="brand">Bee manager</h1>
         <div className="row" style={{ gap: 12, alignItems: 'center' }}>
           {/*
             Two standing facts, back on the index.

@@ -1,12 +1,23 @@
-# swarm-stamp-monitor
+# bee-manager
 
-Keeps Swarm postage batches alive, and makes what they cost impossible to miss.
+Watches a Bee node and the things about it that fail quietly.
 
-The Swarm dashboard can buy and top up batches but cannot do it automatically, so
-a batch lapses silently — and when it does, the chunks it stamped are dropped from
-storer reserves and the data is gone. This watches the batches, tops them up
-within hard spend caps, and gives dapps an API to upload through so the Bee node
-itself never has to face the internet.
+It began as a stamp monitor, because a postage batch lapses silently and takes
+its data with it: the Swarm dashboard can buy and top up batches but cannot do
+it automatically. It still does that — tops batches up within hard spend caps,
+and gives dapps an API to upload through so the Bee node itself never has to
+face the internet.
+
+It grew into a node manager because batches turned out not to be the only thing
+that breaks without a local symptom. A node can advertise a WAN address that
+rotated away weeks ago and still report a full peer table, because those peers
+are all outbound. It can hold an 18 GB reserve, serve it, and earn nothing
+because nothing is staked. Its staked height can drift from the reserve size it
+is configured for, with each half correct in its own file. None of that shows up
+in `/health`.
+
+So the rule throughout: a fact decided elsewhere needs checking against
+elsewhere, and anything unknown is reported as unknown rather than as fine.
 
 ![The dashboard, a batch page, the bucket map and settings](docs/screenshots/tour.gif)
 

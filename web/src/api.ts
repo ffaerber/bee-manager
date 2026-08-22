@@ -1,6 +1,17 @@
 /** Thin client for the admin API. The token is supplied by the operator at
  *  runtime (the service normally sits behind Traefik basicauth as well). */
 
+/**
+ * Deliberately still the old `ssm-` prefix, after the rename to Bee manager.
+ *
+ * This key names a value already sitting in operators' browsers. Renaming it
+ * signs everyone out of a dashboard whose token cannot be recovered from the
+ * UI — a real cost, to make an invisible string match a product name. Same
+ * reasoning for ssm.hideUnmanaged.v2, and for the swarm volume and secret,
+ * which hold the database and the token itself.
+ *
+ * Renaming identity is cheap; renaming things that hold state is not.
+ */
 const TOKEN_KEY = 'ssm-admin-token';
 
 export const getToken = () => localStorage.getItem(TOKEN_KEY) ?? '';

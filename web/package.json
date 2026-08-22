@@ -1,5 +1,5 @@
 {
-  "name": "swarm-stamp-monitor-web",
+  "name": "bee-manager-web",
   "private": true,
   "type": "module",
   "scripts": {

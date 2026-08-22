@@ -315,7 +315,7 @@ export function createServer(deps: ServerDeps) {
       const ok = poller.last?.ok ?? false;
       return {
         status: ok ? 'ok' : 'degraded',
-        version: 'swarm-stamp-monitor',
+        version: 'bee-manager',
         apiVersion: '8.1.0',
         build: BUILD,
         lastPollOk: poller.last?.ok ?? null,
