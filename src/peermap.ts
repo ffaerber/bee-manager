@@ -25,6 +25,7 @@
 
 import type { Db, PeerLocation } from './db';
 import { SelfLocationFeed, type SelfLocOptions } from './selfloc';
+import { plausibleCoords } from './geo';
 
 export interface PeerMapOptions {
   enabled?: boolean;
@@ -116,11 +117,13 @@ export class PeerMapFeed {
         // because passing it through unmapped silently marked every peer
         // unplaceable, which looks exactly like "nobody is indexed".
         const l = b?.location;
-        this.db.putPeerLocation(overlay, l ? {
+        // (0, 0) is how this index says "I don't know", so an unplaceable peer
+        // must be stored as missing — not plotted off the coast of Africa.
+        this.db.putPeerLocation(overlay, plausibleCoords(l?.latitude, l?.longitude) ? {
           country: l.country ?? null,
           city: l.city ?? null,
-          lat: typeof l.latitude === 'number' ? l.latitude : null,
-          lon: typeof l.longitude === 'number' ? l.longitude : null,
+          lat: l.latitude,
+          lon: l.longitude,
         } : null);
       } catch {
         // Offline or slow. Leave it unknown rather than recording a miss:

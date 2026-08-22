@@ -133,3 +133,36 @@ describe('resolving this node, without inventing it', () => {
     expect(called).toBe(0);
   });
 });
+
+describe('the sentinel that is not a place', () => {
+  it('rejects (0, 0) from the index and falls through to the real source', async () => {
+    // Observed live: the index reports an unknown position as zeros rather
+    // than omitting it. This shipped once and published the node at Null
+    // Island with a null city.
+    const f = new SelfLocationFeed({
+      fetchImpl: (async (u: any) => String(u).includes('swarmscan')
+        ? ok({ location: { latitude: 0, longitude: 0 } })
+        : ok({ status: 'success', country: 'Cyprus', city: 'Limassol', lat: 34.6874, lon: 33.0366 })) as any,
+    });
+    const loc = await f.get('abc123', LIVE_UNDERLAY);
+    expect(loc).toMatchObject({ city: 'Limassol', lat: 34.6874 });
+  });
+
+  it('reports nothing when both sources say (0, 0)', async () => {
+    const f = new SelfLocationFeed({
+      fetchImpl: (async (u: any) => String(u).includes('swarmscan')
+        ? ok({ location: { latitude: 0, longitude: 0 } })
+        : ok({ status: 'success', lat: 0, lon: 0 })) as any,
+    });
+    expect(await f.get('abc123', LIVE_UNDERLAY)).toBeNull();
+  });
+
+  it('keeps a genuine coordinate that merely contains a zero', async () => {
+    // Only exactly (0, 0) is the sentinel. The equator and the prime meridian
+    // are real places and must survive.
+    const f = new SelfLocationFeed({
+      fetchImpl: (async () => ok({ location: { country: 'Ghana', city: 'Tema', latitude: 5.7, longitude: 0 } })) as any,
+    });
+    expect(await f.get('abc123', LIVE_UNDERLAY)).toMatchObject({ lat: 5.7, lon: 0 });
+  });
+});

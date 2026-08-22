@@ -11,8 +11,9 @@
  *
  *   1. The same index that places the peers, by our own overlay. Free,
  *      consistent with every other dot on the map, and requires no new
- *      third party. It currently returns no location for this node, so in
- *      practice it is the fallback that answers.
+ *      third party. For this node it answers {latitude: 0, longitude: 0},
+ *      which means "unknown" and is rejected — so in practice the fallback
+ *      is what answers.
  *   2. Geolocating the public address the node itself advertises. This is
  *      the node's real address — the one peers dial — read from Bee's own
  *      /addresses rather than assumed from wherever this process happens to
@@ -31,6 +32,7 @@
  */
 
 import type { PeerLocation } from './db';
+import { plausibleCoords } from './geo';
 
 /** RFC1918, loopback, link-local, CGNAT — anything that is not routable. */
 function isPrivate(ip: string): boolean {
@@ -121,7 +123,9 @@ export class SelfLocationFeed {
       });
       if (!res.ok) return null;
       const l: any = (await res.json())?.location;
-      if (typeof l?.latitude !== 'number' || typeof l?.longitude !== 'number') return null;
+      // NOT a bare typeof: the index answers "unknown" with (0, 0), which is
+      // a number and would have placed this node in the Atlantic.
+      if (!plausibleCoords(l?.latitude, l?.longitude)) return null;
       return {
         overlay, country: l.country ?? null, city: l.city ?? null,
         lat: l.latitude, lon: l.longitude,
@@ -141,7 +145,7 @@ export class SelfLocationFeed {
       );
       if (!res.ok) return null;
       const d: any = await res.json();
-      if (d?.status !== 'success' || typeof d.lat !== 'number' || typeof d.lon !== 'number') return null;
+      if (d?.status !== 'success' || !plausibleCoords(d.lat, d.lon)) return null;
       return { overlay: 'self', country: d.country ?? null, city: d.city ?? null, lat: d.lat, lon: d.lon };
     } catch { return null; }
   }
