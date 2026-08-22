@@ -129,53 +129,6 @@ export default function App() {
       <div className="spread" style={{ marginBottom: 16 }}>
         <h1 className="brand">Bee manager</h1>
         <div className="row" style={{ gap: 12, alignItems: 'center' }}>
-          {/*
-            Two standing facts, back on the index.
-            
-            They were moved to /settings on the grounds that steady state needs
-            no announcement. That holds for things this service controls — but
-            reachability is not one of them: it is decided by a router and a
-            DNS record, it changes without anyone touching this app, and it has
-            no local symptom. The homelab node was undialable for six weeks
-            while reporting a full peer table. A fact that can go wrong
-            silently is exactly the one worth a permanent chip.
-            
-            Auto top-up sits beside it for the opposite reason: it is the
-            single setting that decides whether any of this is load-bearing or
-            just a viewer, and reading it should not require a second page.
-          */}
-          {state.reachability?.unreachable === false && (
-            <span className="status good" title={
-              `Peers can dial this node${state.reachability.handshakeMs != null
-                ? ` — handshake ${state.reachability.handshakeMs} ms` : ''}` +
-              `${state.reachability.userAgent ? ` · ${state.reachability.userAgent}` : ''}`}>
-              reachable
-            </span>
-          )}
-          {/* Height and reserve doubling are one setting kept in two places — a
-          contract call and a startup flag — and nothing else compares them.
-          Out of step, the node stores more than its stake covers and keeps
-          running: no local symptom, just rounds it cannot win. Shown to every
-          tier because both halves are facts about the node, and both are
-          already public on-chain. */}
-      {state.stake && state.reserveCapacityDoubling != null
-        && state.stake.height !== state.reserveCapacityDoubling && (
-        <div className="banner warn">
-          Staked height is <strong>{state.stake.height}</strong> but this node runs with
-          {' '}reserve-capacity-doubling=<strong>{state.reserveCapacityDoubling}</strong>.
-          {' '}They are the same setting in two places: the reserve is 2^(22+n) chunks and the
-          {' '}stake collateralises it. Nothing local reports this — the node serves either way.
-        </div>
-      )}
-
-      {state.reachability?.unreachable === true && (
-            <span className="status critical" title={state.reachability.error ?? 'no inbound connection'}>
-              undialable
-            </span>
-          )}
-          {/* Absent when unknown: no chip at all rather than a reassuring one.
-              An observer being down is not evidence that the node is fine. */}
-
           {/* Which build is answering. The page and the service ship together,
               so one stamp covers both — and it is the server's, not the
               bundle's, so a cached page shows the version it was cached from

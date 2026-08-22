@@ -27,9 +27,31 @@ export function BeeNode({ state }: { state: State | null }) {
       <div className="card-head">
         <div className="spread">
           <h2>Bee node</h2>
-          <span className={`status ${state.ok && n?.healthy ? 'good' : 'critical'}`}>
-            {state.ok && n?.healthy ? 'healthy' : 'unreachable'}
-          </span>
+          {/* Two chips, because they answer opposite questions and a node can
+              fail either one alone. "healthy" is whether WE can reach its API;
+              "reachable" is whether the NETWORK can dial it. The homelab node
+              was healthy and undialable for six weeks — one chip could not
+              have said that. */}
+          <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+            <span className={`status ${state.ok && n?.healthy ? 'good' : 'critical'}`}
+              title={state.ok && n?.healthy
+                ? 'The API answers, so every figure here is current'
+                : 'The API does not answer; figures are the last good reading'}>
+              {state.ok && n?.healthy ? 'healthy' : 'unreachable'}
+            </span>
+            {dialable && (
+              <span className="status good" title="Peers can dial this node from the internet">
+                reachable
+              </span>
+            )}
+            {undialable && (
+              <span className="status critical" title={r?.error ?? 'no inbound connection'}>
+                undialable
+              </span>
+            )}
+            {/* No chip when unknown: an observer being down is not evidence,
+                and a green one there would be a claim nobody made. */}
+          </div>
         </div>
         <p className="muted" style={{ fontSize: 12 }}>
           The node this manages. Everything below is read from it, so when it is unreachable the
@@ -73,9 +95,10 @@ export function BeeNode({ state }: { state: State | null }) {
           number, and the useful version of it names what was tried. */}
       <p className="muted" style={{ fontSize: 12, marginTop: 16 }}>
         {dialable && (
-          <>Reachable from the internet
-            {r?.handshakeMs != null && <> · handshake {r.handshakeMs} ms</>}
-            {r?.userAgent && <> · seen as {r.userAgent.split(' ')[0]}</>}
+          <>Dialed from outside
+            {r?.handshakeMs != null && <> in {r.handshakeMs} ms</>}
+            {r?.userAgent && <>, seen as {r.userAgent.split(' ')[0]}</>}
+            {r?.lastCheckedAt && <> · {new Date(r.lastCheckedAt).toLocaleString()}</>}
           </>
         )}
         {undialable && (
