@@ -1,3 +1,4 @@
+import { shortAddr } from './format';
 /**
  * The node's wallet, and how to put money into it.
  *
@@ -83,7 +84,7 @@ export function Wallet({ state }: { state: State }) {
       <div className="row" style={{ marginTop: 14, gap: 8 }}>
         <span className="tile-label">Address</span>
         <button className="reflink" title={w.address} onClick={() => copy('address', w.address)}>
-          {copied === 'address' ? 'copied' : w.address}
+          {copied === 'address' ? 'copied' : shortAddr(w.address)}
         </button>
         <a className="backlink" href={explorer(w.address)} target="_blank" rel="noopener noreferrer">
           explorer ↗

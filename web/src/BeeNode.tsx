@@ -1,3 +1,4 @@
+import { shortAddr } from './format';
 import type { State } from './api';
 
 /**
@@ -109,9 +110,12 @@ export function BeeNode({ state }: { state: State | null }) {
         {!dialable && !undialable && <>Reachability unknown — no outside view available right now.</>}
       </p>
 
+      {/* Abbreviated for the same reason as the wallet address: 64 hex
+          characters do not fit a phone, and at full width it pushed the card
+          wider than the screen. The whole value is in the title. */}
       {n?.overlay && (
-        <p className="muted" style={{ fontSize: 11, marginTop: 8, wordBreak: 'break-all' }}>
-          overlay {n.overlay}
+        <p className="muted" style={{ fontSize: 11, marginTop: 8 }} title={n.overlay}>
+          overlay <span className="mono">{shortAddr(n.overlay, 8, 6)}</span>
         </p>
       )}
     </div>

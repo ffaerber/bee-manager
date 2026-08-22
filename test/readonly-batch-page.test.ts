@@ -78,3 +78,40 @@ describe('formatting an absent byte count', () => {
     expect(fmtBytes(4294967296)).toBe('4.29 GB');
   });
 })
+
+/**
+ * Addresses are abbreviated the way a wallet does it.
+ *
+ * A full 0x address does not fit a phone, and inside a bordered control it does
+ * not wrap either — the address box overflowed the card it sat in, which is
+ * worse than unreadable because it breaks the layout around it.
+ *
+ * The rule that matters: what is DISPLAYED may be abbreviated, what is COPIED
+ * never is. A truncated address reaching the clipboard is a silent way to send
+ * funds nowhere.
+ */
+import { shortAddr } from '../web/src/format';
+
+describe('abbreviating an address', () => {
+  const ADDR = '0x195ef28b049a4686168ad7a380ba965bf0b7d832';
+
+  it('keeps a recognisable head and the distinguishing tail', () => {
+    expect(shortAddr(ADDR)).toBe('0x195e…d832');
+  });
+
+  it('takes a wider window for a 64-char overlay', () => {
+    const overlay = 'ff896a936f4c6b39c8c123a3d5d2b252c054af6dec567afe3220a1490d53eeb2';
+    expect(shortAddr(overlay, 8, 6)).toBe('ff896a93…53eeb2');
+  });
+
+  it('leaves short values alone rather than mangling them', () => {
+    // An ENS name or a stub is already legible; eliding it would only lose.
+    expect(shortAddr('alice.eth')).toBe('alice.eth');
+    expect(shortAddr('0x1234')).toBe('0x1234');
+  });
+
+  it('renders an em dash for a missing address, not "undefined"', () => {
+    expect(shortAddr(undefined)).toBe('—');
+    expect(shortAddr(null)).toBe('—');
+  });
+})

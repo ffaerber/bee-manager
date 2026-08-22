@@ -487,6 +487,27 @@ tr:hover .rowlink { text-decoration: underline; }
 }
 @media (max-width: 759px) {
   .vitals > :last-child { border-top: 1px solid var(--rule); padding-top: 24px; }
+
+  /* Give the cards the screen.
+     
+     40px of page padding plus 30px of card padding spends 140px of a 390px
+     phone on empty margin before a single figure is drawn — a quarter of the
+     width, which is why the readings looked cramped while the page looked
+     roomy. Desktop keeps the generous version; it has the room to. */
+  .wrap { padding: 20px 12px 56px; }
+  .card { padding: 20px 16px; margin-bottom: 16px; }
+
+  /* Long values must not push a card wider than the viewport. Abbreviation
+     handles the addresses; this is the backstop for anything else — a
+     reference, an error naming a URL — so a single unbroken string can never
+     make the whole page scroll sideways. */
+  .card { overflow-wrap: anywhere; }
+  .reflink { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* The hero is already sized down when inline; on a phone even the page hero
+     needs to fit beside its unit rather than wrapping onto its own line. */
+  .hero-value { font-size: 56px; }
+  .hero-value.is-inline { font-size: 34px; }
 }
 
 /* Clickable rows. The hover tint is the only affordance a table row has, so it

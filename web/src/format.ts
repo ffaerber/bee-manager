@@ -106,3 +106,23 @@ export function runwayRemainingMs(days: number, ageMs: number, elapsedMs: number
   if (!isFinite(days)) return Infinity;
   return days * 86_400_000 - ageMs - elapsedMs;
 }
+
+/**
+ * A 0x address as a wallet shows it: head, ellipsis, tail.
+ *
+ * Full addresses do not fit a phone. In a bordered control they do not wrap
+ * either — the box overflowed the card it sat in, which is worse than
+ * unreadable because it breaks the layout around it.
+ *
+ * The head is long enough to recognise and the tail is what distinguishes two
+ * addresses from the same wallet, which is the pair people actually compare.
+ * The full value always stays in the title and is what gets copied: a
+ * truncation that reaches the clipboard would be a silent way to send funds
+ * nowhere.
+ */
+export function shortAddr(a: string | null | undefined, head = 6, tail = 4): string {
+  if (!a) return '—';
+  // Not long enough to be worth abbreviating, e.g. an ENS name or a stub.
+  if (a.length <= head + tail + 3) return a;
+  return `${a.slice(0, head)}…${a.slice(-tail)}`;
+}
