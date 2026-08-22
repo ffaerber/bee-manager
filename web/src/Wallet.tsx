@@ -58,7 +58,7 @@ export function Wallet({ state }: { state: State }) {
   return (
     <div className="card">
       <div className="spread" style={{ marginBottom: 12 }}>
-        <h2>Node wallet</h2>
+        <h2>Bee wallet</h2>
         <button onClick={() => setShow(!show)}>{show ? 'Hide deposit details' : 'Add funds'}</button>
       </div>
 
