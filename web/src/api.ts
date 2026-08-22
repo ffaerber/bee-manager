@@ -118,7 +118,16 @@ export interface State {
   build?: Build;
   reachability?: Reachability | null;
   /** Stake as the chain holds it. Null when unread or disabled. */
-  stake?: { address: string; effectiveBzz: number; height: number; fetchedAt: number } | null;
+  stake?: {
+    address: string;
+    /** The part of the deposit genuinely collateralising the reserve. */
+    effectiveBzz: number;
+    /** Surplus that could be withdrawn now. A residual, not a setting. */
+    withdrawableBzz: number;
+    /** Must equal reserveCapacityDoubling. */
+    height: number;
+    fetchedAt: number;
+  } | null;
   /** Reserve doubling the node is configured with. Must equal stake.height. */
   reserveCapacityDoubling?: number | null;
   /**

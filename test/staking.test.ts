@@ -33,6 +33,7 @@ const feed = (height: any, stake: bigint, opts: any = {}) => {
     return ((f as any).cached = {
       address, height: h,
       effectiveBzz: Number((stake * 10_000n) / 10n ** 16n) / 10_000,
+      withdrawableBzz: 0,
       fetchedAt: now,
     });
   };
@@ -40,7 +41,7 @@ const feed = (height: any, stake: bigint, opts: any = {}) => {
 };
 
 describe('the mismatch rule', () => {
-  const stake = (height: number) => ({ address: ADDR, effectiveBzz: 13.4789, height, fetchedAt: 1 });
+  const stake = (height: number) => ({ address: ADDR, effectiveBzz: 13.4789, withdrawableBzz: 1.4479, height, fetchedAt: 1 });
 
   it('is silent when the two agree', () => {
     expect(heightMismatch(stake(0), 0)).toBeNull();

@@ -6,6 +6,7 @@ import { batchIdFrom, isSettings, link, navigate, usePath } from './router';
 import { Settings } from './Settings';
 import { Wallet } from './Wallet';
 import { Chequebook } from './Chequebook';
+import { Staking } from './Staking';
 import { countdown, fmtDays, runwayRemainingMs, ttlSeverity } from './format';
 import { Modal } from './Modal';
 import type { Batch, Ladder, Quote, State, Action } from './api';
@@ -258,6 +259,7 @@ export default function App() {
       <Overview state={state} />
       <Wallet state={state} />
       <Chequebook state={state} />
+      <Staking state={state} />
       <Batches state={state} onChange={load} />
       <Actions actions={actions} />
     </div>

@@ -44,6 +44,12 @@ export const STAKE_REGISTRY = '0xda2a16ee889e7f04980a8d597b48c8d51b9518f4';
 const ABI = [
   'function heightOfAddress(address) view returns (uint8)',
   'function nodeEffectiveStake(address) view returns (uint256)',
+  /**
+   * Reads msg.sender, so it only answers when called AS the node's wallet.
+   * Queried with `from` set for that reason — called plainly it returns 0 and
+   * would read as "nothing to withdraw" for every node on the network.
+   */
+  'function withdrawableStake() view returns (uint256)',
 ];
 
 /** 1 xBZZ in wei. xBZZ has 16 decimals on Gnosis, not 18. */
@@ -56,6 +62,15 @@ export interface StakeInfo {
   effectiveBzz: number;
   /** Staked height. Must match the node's reserve-capacity-doubling. */
   height: number;
+  /**
+   * The part of the deposit not currently committed, and withdrawable now.
+   *
+   * A residual, not a dial: the contract decides how much of the deposit is
+   * effective and this is whatever is left over. It moves on its own —
+   * measured 1.4479 one day and shrinking as the effective portion grew — so
+   * it is an observation, never a target.
+   */
+  withdrawableBzz: number;
   fetchedAt: number;
 }
 
@@ -109,9 +124,11 @@ export class StakeFeed {
   private async read(address: string, now: number): Promise<StakeInfo | null> {
     try {
       const c = new Contract(this.contract, ABI, this.providerFactory(this.rpcUrl));
-      const [height, stake] = await Promise.all([
+      const [height, stake, withdrawable] = await Promise.all([
         c.heightOfAddress(address),
         c.nodeEffectiveStake(address),
+        // `from` matters: this one reads msg.sender.
+        c.withdrawableStake({ from: address }).catch(() => 0n),
       ]);
       const h = Number(height);
       // A height outside what Bee will accept means we misread the call, not
@@ -121,6 +138,7 @@ export class StakeFeed {
       return (this.cached = {
         address,
         effectiveBzz: Number((BigInt(stake) * 10_000n) / PLUR_PER_BZZ) / 10_000,
+        withdrawableBzz: Number((BigInt(withdrawable) * 10_000n) / PLUR_PER_BZZ) / 10_000,
         height: h,
         fetchedAt: now,
       });

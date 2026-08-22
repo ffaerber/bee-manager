@@ -11,11 +11,14 @@
  *               (the hero's total runway adds the batches' prepaid value)
  *   chequebook  bandwidth settlement with other nodes — its own card below,
  *               because it is monitored rather than merely held
- *   stake       locked in the storage incentives contract
+ *   stake       collateral for storing OTHER people's data — its own card,
+ *               because it is not wallet money in any useful sense: it is not
+ *               spendable, not spent, and not related to buying postage
  *
  * Showing only the wallet made the balance look smaller than it is; showing all
  * three without saying which is spendable would be worse. So each is labelled
- * with what it can actually do.
+ * with what it can actually do, and the two that are not the wallet have moved
+ * out of this card entirely.
  *
  * Deliberately absent: a token contract address. Getting one wrong sends funds
  * nowhere recoverable, and there is no way to read it from the Bee API to
@@ -69,14 +72,6 @@ export function Wallet({ state }: { state: State }) {
           <div className="tile-label">Gas</div>
           <div className="tile-value">{w.xdai.toFixed(2)}<span className="tile-unit">xDAI</span></div>
           <div className="tile-sub">every purchase needs some</div>
-        </div>
-        <div>
-          <div className="tile-label">Staked</div>
-          <div className="tile-value" style={{ fontSize: 18 }}>
-            {w.stakedBzz != null ? w.stakedBzz.toFixed(2) : '—'}
-            <span className="tile-unit">xBZZ</span>
-          </div>
-          <div className="tile-sub">locked for storage incentives</div>
         </div>
       </div>
 
