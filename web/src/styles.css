@@ -75,7 +75,7 @@
   /* Sequential ramp for the bucket map, dim to bright. */
   /* Opaque, because the map canvas composites nothing — an empty bucket has
      to be a real colour, not a translucent border token. */
-  --map-empty: #171821;
+  --map-empty: #40445a;
   --map-low: #256abf;
   --map-mid: #6da7ec;
   --map-high: #cde2fb;
@@ -345,13 +345,11 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 tr:last-child td { border-bottom: none; }
 .scroll-x { overflow-x: auto; }
 
-/* Peer dots are sized in viewBox units, so they shrink with the map. At phone
-   width the map is ~360px wide and r=3.2 lands at about one physical pixel —
-   present in the DOM, invisible to the eye. Scaled up here rather than in the
-   component because it is a rendering-size problem, not a data one. The `r`
-   attribute stays on the element as the fallback. */
-.peer-dot { r: 3.2; }
-@media (max-width: 759px) { .peer-dot { r: 8; } }
+/* Peer dots carry identity, not magnitude-by-color: one fill, sized by how
+   many peers share the spot. Radius is computed in the component from the
+   measured card width, so it is NOT set here — a CSS `r` would apply one
+   value to every dot and flatten the counts back out. */
+.peer-dot { fill: var(--good); fill-opacity: 0.85; }
 
 /* Meter: thin, neutral track, lit fill.
    The track stays one grey at every severity. It used to be a washed step of
