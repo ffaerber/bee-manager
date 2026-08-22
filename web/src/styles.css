@@ -396,6 +396,22 @@ tr:last-child td { border-bottom: none; }
   content: ''; flex: none; width: 6px; height: 6px;
   background: currentColor;
 }
+/* A status chip states the state of the card it sits in, so it belongs at the
+   far right of the head at every width.
+
+   `.spread` is space-between, which does that on one line and stops doing it
+   the moment the head wraps — on a phone the chip landed wherever the wrap
+   left it, reading as part of the heading rather than as the card's state.
+   `margin-left: auto` holds it right on its own line too. */
+.card-head .spread > .status:last-child,
+.card-head .spread > .row:last-child,
+.card > .spread > .status:last-child,
+.card > .spread > .row:last-child { margin-left: auto; }
+/* Deliberately NOT `.row > .status:last-child`: the Bee node head carries two
+   chips in one row — API health and network reachability — and pushing the
+   last one right would split a pair that only means something together. The
+   GROUP moves right; its contents stay adjacent. */
+
 .status.good { color: var(--good); border-color: rgba(127, 227, 196, 0.4); }
 .status.warning { color: var(--warning); border-color: rgba(250, 178, 25, 0.45); }
 .status.critical { color: var(--critical); border-color: rgba(236, 48, 19, 0.5); }

@@ -446,11 +446,19 @@ function Batches({ state, onChange }: { state: State; onChange: () => void }) {
     <div className="card">
 
       <div className="spread" style={{ marginBottom: 12 }}>
-        <div className="row" style={{ gap: 12, alignItems: 'center' }}>
-          <h2>Batches</h2>
-          {/* The setting that decides whether this list is maintained or merely
-              watched, next to the list it applies to rather than in the page
-              header. Withheld from the public tier, which is told no config. */}
+        <h2>Batches</h2>
+        {/* The chip goes last, so it lands at the far right like the status on
+            every other card. It was beside the heading, which read as part of
+            the title rather than as the state of the list. */}
+        <div className="row" style={{ gap: 16 }}>
+          {/* One key for both tables, so it is not repeated per section. */}
+          <span className="row muted" style={{ gap: 12, flexWrap: 'nowrap', fontSize: 12 }}>
+            <span className="row" style={{ gap: 5, flexWrap: 'nowrap' }}><BatchKind immutable={false} /> mutable</span>
+            <span className="row" style={{ gap: 5, flexWrap: 'nowrap' }}><BatchKind immutable /> immutable</span>
+          </span>
+          <button className="primary" onClick={() => setCreating(true)}>Create batch</button>
+          {/* Withheld from the public tier, which is told no config and must
+              not be shown a guess at someone else's automation. */}
           {state.config && (
             <span className={`status ${armedHere ? 'good' : 'warning'}`}
               title={armedHere
@@ -459,14 +467,6 @@ function Batches({ state, onChange }: { state: State; onChange: () => void }) {
               auto top-up {armedHere ? 'on' : 'off'}
             </span>
           )}
-        </div>
-        <div className="row" style={{ gap: 16 }}>
-          {/* One key for both tables, so it is not repeated per section. */}
-          <span className="row muted" style={{ gap: 12, flexWrap: 'nowrap', fontSize: 12 }}>
-            <span className="row" style={{ gap: 5, flexWrap: 'nowrap' }}><BatchKind immutable={false} /> mutable</span>
-            <span className="row" style={{ gap: 5, flexWrap: 'nowrap' }}><BatchKind immutable /> immutable</span>
-          </span>
-          <button className="primary" onClick={() => setCreating(true)}>Create batch</button>
         </div>
       </div>
 
