@@ -19,6 +19,12 @@ export interface PeerCluster {
 /**
  * Collapse peers that land on the same spot into one mark.
  *
+ * Still needed with uniform dots: peers in the same datacentre project to the
+ * same pixel, so without grouping they would be 35 identical circles stacked
+ * on one another — visually one dot, but 35 hover targets fighting each other
+ * and 35 nodes in the DOM. Grouping makes that one mark whose label carries
+ * the real number.
+ *
  * Swarm nodes cluster in datacentres — a live reading was Finland 13, Germany
  * 6, Canada 2, which is 21 peers at three addresses. Drawn as 21 separate
  * translucent dots they stack into three opaque ones, so the map said "21
@@ -52,22 +58,3 @@ export function clusterPeers(peers: PeerPoint[], quantum = 6): PeerCluster[] {
   }).sort((a, b) => b.count - a.count);
 }
 
-/**
- * Radius for a cluster of n peers, in viewBox units.
- *
- * Area scales with the count, not radius — a 13-peer mark must look like 13,
- * and radius-proportional sizing would draw it four times too big.
- *
- * Sized against the LARGEST cluster rather than against a fixed per-peer
- * radius. With a fixed base the whole range floats with the biggest number:
- * 35 peers in Helsinki drew a disc reaching from Norway to Moscow, and
- * shrinking the base enough to fix that left single peers invisible. Anchoring
- * the top of the scale bounds the big mark and lets the small ones stay legible.
- *
- * `minR` is a visibility floor and the one place area-proportionality gives
- * way. It can only ever make a SMALL mark bigger than its share — never a
- * large one — so it cannot overstate how concentrated the network is.
- */
-export function clusterRadius(n: number, nMax: number, maxR: number, minR: number): number {
-  return Math.max(minR, maxR * Math.sqrt(n / Math.max(nMax, 1)));
-}

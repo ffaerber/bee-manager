@@ -1,7 +1,7 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { State } from './api';
 import { WORLD_PATH, WORLD_VIEWBOX, project } from './worldPath';
-import { clusterPeers, clusterRadius, type PeerPoint } from './peerCluster';
+import { clusterPeers, type PeerPoint } from './peerCluster';
 
 /**
  * Where this node's peers are.
@@ -53,14 +53,19 @@ export function PeerMap({ state }: { state: State | null }) {
    * is fixed at 1000 wide, so a radius in user units means nothing on its own.
    */
   const px = (v: number) => (v * WORLD_VIEWBOX.w) / Math.max(width, 1);
-  const MAX_R = 6;     // the biggest cluster, whatever it holds
-  const MIN_R = 1.3;   // small, but still a dot
+  /**
+   * One size for every peer, asked for directly. Nothing on the map encodes
+   * how many peers a mark holds any more — Helsinki with 35 and Tallinn with
+   * 1 are the same circle. The counts have not gone anywhere: they are in the
+   * label on each mark and in the per-country row underneath. What is gone is
+   * being able to see concentration at a glance.
+   */
+  const PEER_R = 2.5;
 
   const clusters = useMemo(
     () => clusterPeers((pm?.located ?? []) as PeerPoint[]),
     [pm?.located],
   );
-  const biggest = clusters.length ? clusters[0].count : 1;
 
   /**
    * This node, projected — or nothing.
@@ -123,7 +128,7 @@ export function PeerMap({ state }: { state: State | null }) {
               key={`l-${c.key}`}
               className="peer-link"
               x1={me.x} y1={me.y} x2={c.x} y2={c.y}
-              strokeWidth={px(0.35 + 0.25 * Math.sqrt(c.count / Math.max(biggest, 1)))}
+              strokeWidth={px(0.5)}
             />
           ))}
 
@@ -131,7 +136,7 @@ export function PeerMap({ state }: { state: State | null }) {
             <circle
               key={c.key}
               className="peer-dot"
-              cx={c.x} cy={c.y} r={clusterRadius(c.count, biggest, px(MAX_R), px(MIN_R))}
+              cx={c.x} cy={c.y} r={px(PEER_R)}
               onMouseEnter={() => setHover({ x: c.x, y: c.y, label: c.label })}
               onMouseLeave={() => setHover(null)}
             >
@@ -148,13 +153,12 @@ export function PeerMap({ state }: { state: State | null }) {
               onMouseEnter={() => setHover({ x: me.x, y: me.y, label: me.label })}
               onMouseLeave={() => setHover(null)}
             >
-              {/* A halo, not a bigger dot. Peer marks are sized by how many
-                  peers they carry, so enlarging this one would read as "this
-                  location has many nodes". The ring says "you are here"
-                  without entering that scale at all — which matters because
-                  a 19-peer cluster is otherwise three times this mark. */}
-              <circle className="self-halo" cx={me.x} cy={me.y} r={px(5.0)} />
-              <circle className="self-dot" cx={me.x} cy={me.y} r={px(2.3)} />
+              {/* A halo rather than a bigger dot. Every peer mark is now the
+                  same size, so this one is the same circle in a different
+                  colour — the ring is what makes it findable without making
+                  it look like a peer that matters more. */}
+              <circle className="self-halo" cx={me.x} cy={me.y} r={px(5.5)} />
+              <circle className="self-dot" cx={me.x} cy={me.y} r={px(PEER_R)} />
               <title>{me.label}</title>
             </g>
           )}
@@ -181,8 +185,9 @@ export function PeerMap({ state }: { state: State | null }) {
         {pm.unplaceable > 0 && <> · {pm.unplaceable} not in the index</>}
         {pm.pending === 0 && pm.unplaceable === 0 && <> · complete</>}
         {/* Without this the mark count contradicts the peer count above, and
-            the map looks like it lost most of them. */}
-        {clustered && <> · dots sized by how many share a location</>}
+            the map looks like it lost most of them. Says only that marks are
+            shared, NOT that they are sized — every dot is now identical. */}
+        {clustered && <> · nearby peers share a dot</>}
       </p>
 
       {/* A legend, because two colours alone must not be what tells the marks
