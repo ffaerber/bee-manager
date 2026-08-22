@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { clusterPeers, clusterRadius, type PeerPoint } from '../web/src/PeerMap';
+import { clusterPeers, clusterRadius, type PeerPoint } from '../web/src/peerCluster';
 
 const peer = (n: number, city: string, country: string, lat: number, lon: number): PeerPoint[] =>
   Array.from({ length: n }, (_, i) => ({
@@ -19,7 +19,7 @@ describe('counting the overlap instead of drawing it', () => {
     // The whole point: three marks, but they still add up to 21. Before this,
     // the map said "21 placed" and drew three identical dots.
     expect(cs).toHaveLength(3);
-    expect(cs.reduce((n, c) => n + c.count, 0)).toBe(LIVE.length);
+    expect(cs.reduce((n: number, c) => n + c.count, 0)).toBe(LIVE.length);
   });
 
   it('sizes by area, so a 13-peer mark reads as 13 and not as 169', () => {
