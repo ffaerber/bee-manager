@@ -60,7 +60,7 @@ export function PeerMap({ state }: { state: State | null }) {
    * label on each mark and in the per-country row underneath. What is gone is
    * being able to see concentration at a glance.
    */
-  const PEER_R = 2.5;
+  const PEER_R = 1.6;
 
   const clusters = useMemo(
     () => clusterPeers((pm?.located ?? []) as PeerPoint[]),
@@ -128,7 +128,7 @@ export function PeerMap({ state }: { state: State | null }) {
               key={`l-${c.key}`}
               className="peer-link"
               x1={me.x} y1={me.y} x2={c.x} y2={c.y}
-              strokeWidth={px(0.5)}
+              strokeWidth={px(0.4)}
             />
           ))}
 
@@ -157,7 +157,7 @@ export function PeerMap({ state }: { state: State | null }) {
                   same size, so this one is the same circle in a different
                   colour — the ring is what makes it findable without making
                   it look like a peer that matters more. */}
-              <circle className="self-halo" cx={me.x} cy={me.y} r={px(5.5)} />
+              <circle className="self-halo" cx={me.x} cy={me.y} r={px(3.6)} />
               <circle className="self-dot" cx={me.x} cy={me.y} r={px(PEER_R)} />
               <title>{me.label}</title>
             </g>
