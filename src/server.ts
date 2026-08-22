@@ -211,6 +211,8 @@ export function createServer(deps: ServerDeps) {
             healthy: r.node.healthy, version: r.node.version,
             beeMode: r.node.beeMode, peers: r.node.peers ?? null,
             storageRadius: r.node.storageRadius ?? null,
+            /** Its identity on the network, and how anyone else refers to it. */
+            overlay: r.node.overlay ?? null,
           },
           /**
            * Kept on the PUBLIC tier too. It describes the node's standing on

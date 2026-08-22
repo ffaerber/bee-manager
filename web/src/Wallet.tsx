@@ -75,6 +75,11 @@ export function Wallet({ state }: { state: State }) {
         </div>
       </div>
 
+      {/* The market quote sits with the balances it prices. It was under the
+          batch tiles, which is where the SPEND is, not where the holding is —
+          and the number it converts is the wallet balance directly above. */}
+      {state?.fiat && <PriceNote fiat={state.fiat} />}
+
       <div className="row" style={{ marginTop: 14, gap: 8 }}>
         <span className="tile-label">Address</span>
         <button className="reflink" title={w.address} onClick={() => copy('address', w.address)}>
@@ -136,5 +141,21 @@ export function Wallet({ state }: { state: State }) {
         </div>
       )}
     </div>
+  );
+}
+
+function PriceNote({ fiat }: { fiat: NonNullable<State['fiat']> }) {
+  const mins = Math.round((Date.now() - fiat.fetchedAt) / 60_000);
+  const chg = fiat.usd24hChange;
+  return (
+    <p className="muted" style={{ fontSize: 12, marginTop: 12 }}>
+      BZZ ${fiat.usd.toFixed(4)} · €{fiat.eur.toFixed(4)}
+      {chg !== 0 && (
+        <span style={{ color: chg > 0 ? 'var(--good)' : 'var(--critical)' }}>
+          {' '}{chg > 0 ? '▲' : '▼'}{Math.abs(chg).toFixed(1)}% 24h
+        </span>
+      )}
+      {' '}· CoinGecko, {mins < 1 ? 'just now' : `${mins}m ago`} · display only; amounts above are xBZZ, bridged 1:1
+    </p>
   );
 }

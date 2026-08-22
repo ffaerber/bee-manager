@@ -7,6 +7,7 @@ import { Settings } from './Settings';
 import { Wallet } from './Wallet';
 import { Chequebook } from './Chequebook';
 import { Staking } from './Staking';
+import { BeeNode } from './BeeNode';
 import { countdown, fmtDays, runwayRemainingMs, ttlSeverity } from './format';
 import { Modal } from './Modal';
 import type { Batch, Ladder, Quote, State, Action } from './api';
@@ -256,6 +257,7 @@ export default function App() {
         </div>
       )}
 
+      <BeeNode state={state} />
       <Wallet state={state} />
       <Chequebook state={state} />
       <Staking state={state} />
@@ -377,21 +379,6 @@ export function usdOf(bzz: number | undefined, fiat: State['fiat']): number | un
  * earned — this one comes from a third party, can be minutes old, and plays no
  * part in any spending decision. Saying so costs one line.
  */
-function PriceNote({ fiat }: { fiat: NonNullable<State['fiat']> }) {
-  const mins = Math.round((Date.now() - fiat.fetchedAt) / 60_000);
-  const chg = fiat.usd24hChange;
-  return (
-    <p className="muted" style={{ fontSize: 12, marginTop: 12 }}>
-      BZZ ${fiat.usd.toFixed(4)} · €{fiat.eur.toFixed(4)}
-      {chg !== 0 && (
-        <span style={{ color: chg > 0 ? 'var(--good)' : 'var(--critical)' }}>
-          {' '}{chg > 0 ? '▲' : '▼'}{Math.abs(chg).toFixed(1)}% 24h
-        </span>
-      )}
-      {' '}· CoinGecko, {mins < 1 ? 'just now' : `${mins}m ago`} · display only; amounts above are xBZZ, bridged 1:1
-    </p>
-  );
-}
 
 /**
  * A stat tile: label, then the number with its unit, then at most one sub-line.
@@ -533,12 +520,7 @@ function Batches({ state, onChange }: { state: State; onChange: () => void }) {
           fiat={fiat(state.committedBzz)} />
         {/* No "Batches: n" tile: the list immediately below is the count, and
             two places to read it is two places for it to disagree. */}
-        <Tile label="Node" value={state.node?.peers != null ? String(state.node.peers) : '—'}
-          sub={state.node?.version ? `peers · ${state.node.version.split('-')[0]}` : 'peers'} />
-        <Tile label="Block time" value={(state.msPerBlock / 1000).toFixed(2)} unit="s"
-          sub="measured, not assumed" />
       </div>
-      {state.fiat && <PriceNote fiat={state.fiat} />}
 
       <div className="spread" style={{ marginBottom: 12, marginTop: 22 }}>
         <h2>Batches</h2>

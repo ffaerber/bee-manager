@@ -175,6 +175,8 @@ export interface State {
   node?: {
     healthy: boolean; version?: string; beeMode?: string;
     peers: number | null; storageRadius: number | null;
+    /** The node's identity on the network. */
+    overlay?: string | null;
   };
   chain?: { block: number; price: string };
   /** Display-only fiat quote; null/absent whenever the price feed is off or unreachable. */
