@@ -23,13 +23,34 @@ describe('counting the overlap instead of drawing it', () => {
   });
 
   it('sizes by area, so a 13-peer mark reads as 13 and not as 169', () => {
-    const base = 3.2;
-    // Area ratio must equal the count ratio.
-    const a = (n: number) => Math.PI * clusterRadius(n, base) ** 2;
+    // Floor set to 0 so proportionality is tested where it actually holds.
+    const a = (n: number) => Math.PI * clusterRadius(n, 13, 6, 0) ** 2;
     expect(a(13) / a(1)).toBeCloseTo(13, 6);
     expect(a(4) / a(2)).toBeCloseTo(2, 6);
     // And radius must NOT scale with the count, which is the easy mistake.
-    expect(clusterRadius(13, base)).toBeLessThan(base * 13);
+    expect(clusterRadius(13, 13, 6, 0)).toBeLessThan(6 * 13);
+  });
+
+  it('bounds the biggest cluster no matter how many it holds', () => {
+    // The complaint that prompted this: 35 peers in one city drew a disc
+    // spanning Scandinavia. The top of the scale is now fixed.
+    for (const n of [2, 13, 35, 500]) {
+      expect(clusterRadius(n, n, 6, 1.3)).toBeCloseTo(6, 6);
+    }
+  });
+
+  it('keeps a lone peer visible next to a huge cluster', () => {
+    // Pure sqrt scaling would put this at 6*sqrt(1/35) = 1.01 — a sub-pixel
+    // dot on a phone.
+    expect(clusterRadius(1, 35, 6, 1.3)).toBe(1.3);
+  });
+
+  it('never lets the floor inflate a large mark', () => {
+    // The floor is a visibility concession and must only ever apply at the
+    // small end, or it would overstate how concentrated the network is.
+    const proportional = 6 * Math.sqrt(20 / 35);
+    expect(clusterRadius(20, 35, 6, 1.3)).toBeCloseTo(proportional, 6);
+    expect(clusterRadius(20, 35, 6, 1.3)).toBeLessThan(6);
   });
 
   it('names the place and the size, so a big dot is not a mystery', () => {

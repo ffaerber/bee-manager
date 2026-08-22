@@ -47,12 +47,20 @@ export function PeerMap({ state }: { state: State | null }) {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  const base = Math.max(2.0, (2.2 * WORLD_VIEWBOX.w) / Math.max(width, 1));
+  /**
+   * Sizes are stated in screen pixels and converted to viewBox units, so a
+   * mark is the same physical size on a phone and on a desktop. The viewBox
+   * is fixed at 1000 wide, so a radius in user units means nothing on its own.
+   */
+  const px = (v: number) => (v * WORLD_VIEWBOX.w) / Math.max(width, 1);
+  const MAX_R = 6;     // the biggest cluster, whatever it holds
+  const MIN_R = 1.3;   // small, but still a dot
 
   const clusters = useMemo(
     () => clusterPeers((pm?.located ?? []) as PeerPoint[]),
     [pm?.located],
   );
+  const biggest = clusters.length ? clusters[0].count : 1;
 
   /**
    * This node, projected — or nothing.
@@ -115,7 +123,7 @@ export function PeerMap({ state }: { state: State | null }) {
               key={`l-${c.key}`}
               className="peer-link"
               x1={me.x} y1={me.y} x2={c.x} y2={c.y}
-              strokeWidth={Math.min(1.6, 0.35 + 0.14 * Math.sqrt(c.count))}
+              strokeWidth={px(0.35 + 0.25 * Math.sqrt(c.count / Math.max(biggest, 1)))}
             />
           ))}
 
@@ -123,7 +131,7 @@ export function PeerMap({ state }: { state: State | null }) {
             <circle
               key={c.key}
               className="peer-dot"
-              cx={c.x} cy={c.y} r={clusterRadius(c.count, base)}
+              cx={c.x} cy={c.y} r={clusterRadius(c.count, biggest, px(MAX_R), px(MIN_R))}
               onMouseEnter={() => setHover({ x: c.x, y: c.y, label: c.label })}
               onMouseLeave={() => setHover(null)}
             >
@@ -145,8 +153,8 @@ export function PeerMap({ state }: { state: State | null }) {
                   location has many nodes". The ring says "you are here"
                   without entering that scale at all — which matters because
                   a 19-peer cluster is otherwise three times this mark. */}
-              <circle className="self-halo" cx={me.x} cy={me.y} r={base * 3.4} />
-              <circle className="self-dot" cx={me.x} cy={me.y} r={base * 1.6} />
+              <circle className="self-halo" cx={me.x} cy={me.y} r={px(5.0)} />
+              <circle className="self-dot" cx={me.x} cy={me.y} r={px(2.3)} />
               <title>{me.label}</title>
             </g>
           )}

@@ -56,9 +56,18 @@ export function clusterPeers(peers: PeerPoint[], quantum = 6): PeerCluster[] {
  * Radius for a cluster of n peers, in viewBox units.
  *
  * Area scales with the count, not radius — a 13-peer mark must look like 13,
- * and radius-proportional sizing would draw it four times too big. `base` is
- * the radius of a single peer.
+ * and radius-proportional sizing would draw it four times too big.
+ *
+ * Sized against the LARGEST cluster rather than against a fixed per-peer
+ * radius. With a fixed base the whole range floats with the biggest number:
+ * 35 peers in Helsinki drew a disc reaching from Norway to Moscow, and
+ * shrinking the base enough to fix that left single peers invisible. Anchoring
+ * the top of the scale bounds the big mark and lets the small ones stay legible.
+ *
+ * `minR` is a visibility floor and the one place area-proportionality gives
+ * way. It can only ever make a SMALL mark bigger than its share — never a
+ * large one — so it cannot overstate how concentrated the network is.
  */
-export function clusterRadius(n: number, base: number): number {
-  return base * Math.sqrt(n);
+export function clusterRadius(n: number, nMax: number, maxR: number, minR: number): number {
+  return Math.max(minR, maxR * Math.sqrt(n / Math.max(nMax, 1)));
 }
