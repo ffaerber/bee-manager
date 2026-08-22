@@ -256,7 +256,6 @@ export default function App() {
         </div>
       )}
 
-      <Overview state={state} />
       <Wallet state={state} />
       <Chequebook state={state} />
       <Staking state={state} />
@@ -268,74 +267,6 @@ export default function App() {
 
 /** Hero + stat tiles. Runway is the hero because it is the number that
  *  actually explains why stamps lapse. Exactly one hero per view. */
-function Overview({ state }: { state: State }) {
-  // The HERO is the total runway: wallet plus what the batches are already
-  // paid up for. It is the only one that genuinely counts down — the committed
-  // half drains every block at exactly the burn rate, so it falls at one
-  // second per second. Wallet-over-burn is flat between top-ups and would make
-  // any ticking clock a fiction, which is why it sits in a tile instead.
-  const runway = state.totalRunwayDays;
-  // Null means nothing is burning, so there is no bound to be short of. It has
-  // to be tested BEFORE the comparisons: `null < 30` is true, which would
-  // report the most comfortable possible state as the most critical one.
-  const sev = runway == null ? 'good' : runway < 30 ? 'critical' : runway < 90 ? 'warning' : 'good';
-  /**
-   * Fiat sub-line, e.g. "≈ $8.27". No period suffix: the tile's label already
-   * says whether the figure is a balance or a rate.
-   */
-  const fiat = (bzz: number | undefined) => {
-    const usd = usdOf(bzz, state.fiat);
-    return usd == null ? undefined : `≈ $${usd < 10 ? usd.toFixed(2) : Math.round(usd).toLocaleString()}`;
-  };
-  return (
-    <div className="card">
-      <div className="spread" style={{ alignItems: 'flex-end', marginBottom: 16 }}>
-        <div>
-          <div className="hero-label">Runway until everything lapses</div>
-          <Runway days={runway} sev={sev} ageMs={state.dataAgeMs} />
-          {/* Finer than the severity bands below a month. "Under a month" is
-              true with seven hours left, and true is not the same as useful —
-              the pill should not undersell what the clock beside it is
-              saying. */}
-          <div className={`status ${sev}`} style={{ marginTop: 14 }}>
-            {runway == null ? 'nothing is burning'
-              : runway < 1 ? 'under a day'
-              : runway < 2 ? 'under two days'
-              : runway < 7 ? 'under a week'
-              : runway < 30 ? 'under a month'
-              : runway < 90 ? 'under three months'
-              : 'comfortable'}
-          </div>
-        </div>
-      </div>
-      <div className="tiles">
-        {/* Balances live in the wallet card below; repeating them here made
-            two places to read the same number and disagree about it. */}
-        {/* "per 30 days", not "per month": the figure is literally a 30-day
-            rate, and a calendar month averages 30.44 days. */}
-        {/* Wallet-only runway. Kept on screen because it answers a different
-            question from the hero — not "how long until things lapse" but
-            "how long can I keep paying to stop them" — and because it is the
-            figure the low-wallet alert is defined against. */}
-        <Tile label="Wallet runway"
-          value={state.runwayDays == null ? '∞' : Math.round(state.runwayDays).toLocaleString()}
-          unit={state.runwayDays == null ? undefined : 'd'}
-          sub={state.runwayDays == null ? 'nothing is burning' : 'funds future top-ups'} />
-        <Tile label="Burn rate per 30 days" value={state.burnPer30DaysBzz.toFixed(2)} unit={TOKEN}
-          fiat={fiat(state.burnPer30DaysBzz)} />
-        <Tile label="Prepaid in batches" value={state.committedBzz.toFixed(2)} unit={TOKEN}
-          fiat={fiat(state.committedBzz)} />
-        <Tile label="Batches" value={String(state.batches.length)}
-          sub={`${state.batches.filter((b) => b.managed).length} managed`} />
-        <Tile label="Node" value={state.node?.peers != null ? String(state.node.peers) : '—'}
-          sub={state.node?.version ? `peers · ${state.node.version.split('-')[0]}` : 'peers'} />
-        <Tile label="Block time" value={(state.msPerBlock / 1000).toFixed(2)} unit="s"
-          sub="measured, not assumed" />
-      </div>
-      {state.fiat && <PriceNote fiat={state.fiat} />}
-    </div>
-  );
-}
 
 /**
  * The runway, counting down live.
@@ -550,9 +481,66 @@ function Batches({ state, onChange }: { state: State; onChange: () => void }) {
     : null;
   const soonestSev = soonest ? ttlSeverity(soonest.ttlDays, threshold) : 'good';
 
+
+  // The HERO is the total runway: wallet plus what the batches are already
+  // paid up for. It is the only one that genuinely counts down — the committed
+  // half drains every block at exactly the burn rate, so it falls at one
+  // second per second. Wallet-over-burn is flat between top-ups and would make
+  // any ticking clock a fiction, which is why it sits in a tile instead.
+  const runway = state.totalRunwayDays;
+  // Null means nothing is burning, so there is no bound to be short of. It has
+  // to be tested BEFORE the comparisons: `null < 30` is true, which would
+  // report the most comfortable possible state as the most critical one.
+  const sev = runway == null ? 'good' : runway < 30 ? 'critical' : runway < 90 ? 'warning' : 'good';
+  /**
+   * Fiat sub-line, e.g. "≈ $8.27". No period suffix: the tile's label already
+   * says whether the figure is a balance or a rate.
+   */
+  const fiat = (bzz: number | undefined) => {
+    const usd = usdOf(bzz, state.fiat);
+    return usd == null ? undefined : `≈ $${usd < 10 ? usd.toFixed(2) : Math.round(usd).toLocaleString()}`;
+  };
   return (
     <div className="card">
-      <div className="spread" style={{ marginBottom: 12 }}>
+      {/* Runway leads this card because it is a fact ABOUT the batches: it
+          counts down the prepaid value in them plus the wallet that can renew
+          them. It had its own card above, which put the headline figure and
+          the list it describes in two separate panels. */}
+      <div className="spread" style={{ alignItems: 'flex-end', marginBottom: 16 }}>
+        <div>
+          <div className="hero-label">Runway until everything lapses</div>
+          <Runway days={runway} sev={sev} ageMs={state.dataAgeMs} />
+          <div className={`status ${sev}`} style={{ marginTop: 14 }}>
+            {runway == null ? 'nothing is burning'
+              : runway < 1 ? 'under a day'
+              : runway < 2 ? 'under two days'
+              : runway < 7 ? 'under a week'
+              : runway < 30 ? 'under a month'
+              : runway < 90 ? 'under three months'
+              : 'comfortable'}
+          </div>
+        </div>
+      </div>
+
+      <div className="tiles" style={{ marginBottom: 22 }}>
+        <Tile label="Wallet runway"
+          value={state.runwayDays == null ? '∞' : Math.round(state.runwayDays).toLocaleString()}
+          unit={state.runwayDays == null ? undefined : 'd'}
+          sub={state.runwayDays == null ? 'nothing is burning' : 'funds future top-ups'} />
+        <Tile label="Burn rate per 30 days" value={state.burnPer30DaysBzz.toFixed(2)} unit={TOKEN}
+          fiat={fiat(state.burnPer30DaysBzz)} />
+        <Tile label="Prepaid in batches" value={state.committedBzz.toFixed(2)} unit={TOKEN}
+          fiat={fiat(state.committedBzz)} />
+        {/* No "Batches: n" tile: the list immediately below is the count, and
+            two places to read it is two places for it to disagree. */}
+        <Tile label="Node" value={state.node?.peers != null ? String(state.node.peers) : '—'}
+          sub={state.node?.version ? `peers · ${state.node.version.split('-')[0]}` : 'peers'} />
+        <Tile label="Block time" value={(state.msPerBlock / 1000).toFixed(2)} unit="s"
+          sub="measured, not assumed" />
+      </div>
+      {state.fiat && <PriceNote fiat={state.fiat} />}
+
+      <div className="spread" style={{ marginBottom: 12, marginTop: 22 }}>
         <h2>Batches</h2>
         <div className="row" style={{ gap: 16 }}>
           {/* One key for both tables, so it is not repeated per section. */}
