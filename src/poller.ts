@@ -13,6 +13,7 @@ import { Db } from './db';
 import { applySettings } from './settings';
 import { ReachabilityFeed, type Reachability } from './reachability';
 import { StakeFeed, heightMismatch, type StakeInfo } from './staking';
+import { PeerMapFeed, type PeerMapState } from './peermap';
 import { Alerter } from './alerts';
 import { evaluateAll, findDisappeared, totalBurnPer30Days, totalCommitted, type EvalContext, type Plan } from './evaluate';
 import {
@@ -75,6 +76,8 @@ export interface PollResult {
   reachability?: Reachability | null;
   /** Stake as the chain holds it, so it can be checked against the config. */
   stake?: StakeInfo | null;
+  /** Peer positions, filling in over time. Null when disabled or unread. */
+  peerMap?: PeerMapState | null;
   /**
    * SWAP settlement health. Absent when the node has no chequebook, or when
    * the endpoints could not be read — the rest of the poll still stands.
@@ -168,6 +171,8 @@ export class Poller {
     private readonly reach?: ReachabilityFeed,
     /** On-chain stake and height. Optional; nothing here gates a spend on it. */
     private readonly stakeFeed?: StakeFeed,
+    /** Where the peers are. Decoration; a failure here costs a map, nothing else. */
+    private readonly peerMap?: PeerMapFeed,
   ) {}
 
   /**
@@ -358,6 +363,17 @@ export class Poller {
      *
      * Silent when either side is unknown — an unread stake is not evidence.
      */
+    /**
+     * A few peer lookups, then whatever can be drawn. Wrapped because the
+     * peer list is a second call to Bee and a map is not worth failing a poll
+     * that also renews postage.
+     */
+    const peerMap = this.peerMap
+      ? await this.bee.peers()
+          .then((o) => this.peerMap!.tick(o))
+          .catch(() => null)
+      : null;
+
     const drift = heightMismatch(stake, node?.reserveCapacityDoubling);
     if (drift) {
       await this.alerter.send({
@@ -391,7 +407,7 @@ export class Poller {
     }
 
     this.last = {
-      ok: true, batches, chain, wallet, node, plans, reachability, stake,
+      ok: true, batches, chain, wallet, node, plans, reachability, stake, peerMap,
       msPerBlock: this.msPerBlock,
       burnPer30DaysBzz: plurToBzz(burn),
       runwayDays,

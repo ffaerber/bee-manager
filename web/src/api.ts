@@ -141,6 +141,11 @@ export interface State {
   } | null;
   /** Reserve doubling the node is configured with. Must equal stake.height. */
   reserveCapacityDoubling?: number | null;
+  /** Peer positions for the map. Fills in over time; `pending` says how much. */
+  peerMap?: {
+    located: { overlay: string; country: string | null; city: string | null; lat: number; lon: number }[];
+    connected: number; pending: number; unplaceable: number;
+  } | null;
   /**
    * True on the unauthenticated projection. Set by the server, not inferred
    * here, so the page cannot believe it has write access that the API will

@@ -88,6 +88,15 @@ export interface AppRow {
  * itself: the plaintext exists only in the response that created it, and the
  * hash never leaves the database layer.
  */
+/** A peer's position, once someone has told us where it is. */
+export interface PeerLocation {
+  overlay: string;
+  country: string | null;
+  city: string | null;
+  lat: number;
+  lon: number;
+}
+
 export interface ApiKeyRow {
   id: number;
   name: string;
@@ -193,6 +202,25 @@ export class Db {
         revoked_at   INTEGER
       );
       CREATE INDEX IF NOT EXISTS idx_api_keys_batch ON api_keys (batch_id);
+      -- Where a peer is, once resolved.
+      --
+      -- Persistent and effectively permanent: a node's location changes when
+      -- someone moves a machine, not on a timer, and the whole point of
+      -- storing it is that each overlay is asked about ONCE. Resolving 140
+      -- peers on every restart would be a burst of requests at a third party
+      -- for an answer we already had.
+      --
+      -- The missing flag records a lookup that came back without coordinates,
+      -- so an unlocatable peer is not retried forever.
+      CREATE TABLE IF NOT EXISTS peer_locations (
+        overlay     TEXT PRIMARY KEY,
+        country     TEXT,
+        city        TEXT,
+        lat         REAL,
+        lon         REAL,
+        missing     INTEGER NOT NULL DEFAULT 0,
+        resolved_at INTEGER NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS alerts_sent (
         key     TEXT PRIMARY KEY,
         ts      INTEGER NOT NULL
@@ -475,6 +503,44 @@ export class Db {
 
   recentActions(limit = 100): ActionRow[] {
     return this.db.query(`SELECT * FROM actions ORDER BY ts DESC LIMIT ?`).all(limit).map(toAction);
+  }
+
+  // ── peer locations ───────────────────────────────────────────────────
+
+  /** Everything known, for drawing. Unlocatable peers are left out. */
+  peerLocations(): PeerLocation[] {
+    return (this.db.query(
+      `SELECT overlay, country, city, lat, lon FROM peer_locations
+       WHERE missing = 0 AND lat IS NOT NULL AND lon IS NOT NULL`,
+    ).all() as any[]).map((r) => ({
+      overlay: r.overlay, country: r.country, city: r.city, lat: r.lat, lon: r.lon,
+    }));
+  }
+
+  /** Overlays already asked about, located or not — so we do not ask twice. */
+  peerLocationKnown(): Set<string> {
+    return new Set((this.db.query(`SELECT overlay FROM peer_locations`).all() as any[])
+      .map((r) => r.overlay));
+  }
+
+  putPeerLocation(
+    overlay: string,
+    loc: { country?: string | null; city?: string | null; lat?: number | null; lon?: number | null } | null,
+    now = Date.now(),
+  ) {
+    const ok = loc && Number.isFinite(loc.lat as number) && Number.isFinite(loc.lon as number)
+      // 0,0 is the null island: swarmscan returns it for a node it could not
+      // place, and plotting it would put a peer in the Atlantic.
+      && !((loc.lat === 0) && (loc.lon === 0));
+    this.db.query(
+      `INSERT INTO peer_locations (overlay, country, city, lat, lon, missing, resolved_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+       ON CONFLICT(overlay) DO UPDATE SET
+         country = ?2, city = ?3, lat = ?4, lon = ?5, missing = ?6, resolved_at = ?7`,
+    ).run(
+      overlay, ok ? (loc!.country ?? null) : null, ok ? (loc!.city ?? null) : null,
+      ok ? loc!.lat! : null, ok ? loc!.lon! : null, ok ? 0 : 1, now,
+    );
   }
 
   // ── api keys (per batch, plural so they can be rotated) ──────────────

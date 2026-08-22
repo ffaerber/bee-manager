@@ -235,6 +235,18 @@ export class BeeClient {
    * failing the whole call — a node with the chequebook disabled is still a
    * node worth reporting on.
    */
+  /**
+   * Overlay addresses this node is connected to.
+   *
+   * Only the addresses: Bee knows who, never where. Location has to come from
+   * somewhere that watches the network from outside.
+   */
+  async peers(): Promise<string[]> {
+    const r = await this.request('/peers');
+    const list = Array.isArray(r?.peers) ? r.peers : [];
+    return list.map((p: any) => p?.address).filter((a: any): a is string => typeof a === 'string');
+  }
+
   async nodeStatus(): Promise<NodeStatus> {
     try {
       const health = await this.request('/health');

@@ -8,6 +8,7 @@ import { Wallet } from './Wallet';
 import { Chequebook } from './Chequebook';
 import { Staking } from './Staking';
 import { BeeNode } from './BeeNode';
+import { PeerMap } from './PeerMap';
 import { countdown, fmtDays, runwayRemainingMs, ttlSeverity } from './format';
 import { Modal } from './Modal';
 import type { Batch, Ladder, Quote, State, Action } from './api';
@@ -200,6 +201,7 @@ export default function App() {
       )}
 
       <BeeNode state={state} />
+      <PeerMap state={state} />
       <Wallet state={state} />
       <Chequebook state={state} />
       <Staking state={state} />

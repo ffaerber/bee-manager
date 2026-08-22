@@ -15,6 +15,7 @@ import { createServer } from './server';
 import { PriceFeed } from './price';
 import { ReachabilityFeed } from './reachability';
 import { StakeFeed } from './staking';
+import { PeerMapFeed } from './peermap';
 import { seedSettings } from './settings';
 import { readFileSync } from 'node:fs';
 
@@ -48,7 +49,15 @@ const stakeFeed = new StakeFeed({
   enabled: !/^(0|false)$/i.test(process.env.STAKE_CHECK_ENABLED ?? 'true'),
   rpcUrl: process.env.GNOSIS_RPC_URL ?? 'https://rpc.gnosischain.com',
 });
-const poller = new Poller(cfg, bee, db, alerter, reachability, stakeFeed);
+/**
+ * Peer positions for the map. Resolved a few per tick and cached forever, so
+ * the cost is one lookup per peer ever seen. PEER_MAP_ENABLED=false stops the
+ * outbound calls entirely.
+ */
+const peerMap = new PeerMapFeed(db, {
+  enabled: !/^(0|false)$/i.test(process.env.PEER_MAP_ENABLED ?? 'true'),
+});
+const poller = new Poller(cfg, bee, db, alerter, reachability, stakeFeed, peerMap);
 /**
  * Docker swarm mounts secrets as files, so ADMIN_TOKEN_FILE is the way to keep
  * the token out of git and out of `docker service inspect`. ADMIN_TOKEN stays

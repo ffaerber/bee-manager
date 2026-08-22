@@ -228,6 +228,12 @@ export function createServer(deps: ServerDeps) {
            * the node rather than about the operator's intentions.
            */
           stake: r.stake ?? null,
+          /**
+           * Public: which nodes this one is connected to, and where they are,
+           * is already visible to anyone who asks the same observer. It says
+           * nothing about the operator's money or intentions.
+           */
+          peerMap: r.peerMap ?? null,
           reserveCapacityDoubling: r.node?.reserveCapacityDoubling ?? null,
           chain: r.chain && { block: r.chain.block, price: r.chain.currentPrice.toString() },
           /** Fiat quote for BZZ, or null when unavailable. Never used in any calculation that spends. */
