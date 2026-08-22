@@ -84,7 +84,10 @@ export function Staking({ state }: { state: State | null }) {
         </div>
         <div>
           <div className="tile-label">Withdrawable</div>
-          <div className="tile-value" style={{ fontSize: 18 }}>
+          {/* Four decimals, because this is a small residual and rounding it
+              to two would show 1.45 for a figure that moves in ten-thousandths
+              — but at the same size as the tiles beside it. */}
+          <div className="tile-value">
             {s ? s.withdrawableBzz.toFixed(4) : '—'}<span className="tile-unit">{TOKEN}</span>
           </div>
           {/* A residual, not a dial. There is no "reduce my stake to X": you can
@@ -94,7 +97,7 @@ export function Staking({ state }: { state: State | null }) {
         </div>
         <div>
           <div className="tile-label">Height</div>
-          <div className="tile-value" style={{ fontSize: 18 }}>
+          <div className="tile-value">
             {s ? s.height : '—'}
             {doubling != null && (
               <span className="tile-unit" style={{ color: mismatch ? 'var(--critical)' : undefined }}>

@@ -63,9 +63,10 @@ export function BeeNode({ state }: { state: State | null }) {
       <div className="tiles">
         <div>
           <div className="tile-label">Version</div>
-          <div className="tile-value" style={{ fontSize: 18 }}>
-            {n?.version ? n.version.split('-')[0] : '—'}
-          </div>
+          {/* Same size as every other tile in this grid. It was shrunk on the
+              assumption a version string is long, but the displayed form is
+              just "2.8.1" — the commit suffix is already stripped. */}
+          <div className="tile-value">{n?.version ? n.version.split('-')[0] : '—'}</div>
           <div className="tile-sub">{n?.beeMode ? `${n.beeMode} node` : 'bee'}</div>
         </div>
         <div>
