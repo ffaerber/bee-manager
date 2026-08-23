@@ -972,11 +972,19 @@ export function createServer(deps: ServerDeps) {
           if (!verdict.allowed) { set.status = 403; return { error: `blocked by caps: ${verdict.reason}` }; }
           if (effective().dryRun) return json({ dryRun: true, wouldBuy: q });
 
-          const id = db.recordAction({
+          // Claimed atomically, keyed on kind because there is no batch id
+          // yet. A surplus batch cannot be refunded or merged — it can only be
+          // left to expire — so a double-click here costs more than a
+          // duplicate top-up does.
+          const id = db.recordActionIfIdle({
             batchId: null, appName: label ?? null, kind: 'buy',
             amount: q.amountPerChunk, cost: q.costPlur, status: 'submitted',
             reason: `manual buy: depth ${depth}, ${days}d`, error: null,
           });
+          if (id == null) {
+            set.status = 409;
+            return { error: 'another batch purchase is already in flight' };
+          }
           try {
             const batchId = await bee.buyBatch(q.amountPerChunk, depth, { label, immutable: immutable ?? true });
             db.updateActionStatus(id, 'confirmed');
@@ -1055,7 +1063,11 @@ export function createServer(deps: ServerDeps) {
         signature: headers['x-signature'],
         timestamp: headers['x-timestamp'] ? Number(headers['x-timestamp']) : undefined,
         apiKey: headers['x-api-key'],
-      }, app.apiKeyHash);
+      }, app.apiKeyHash, Date.now(), {
+        // A replayed signature re-uploads the same bytes and burns stamp
+        // capacity for free; quota only bounds how fast.
+        consumeSignature: (hash, expiresAt, now) => db.consumeSignature(hash, expiresAt, now),
+      });
       if (!auth.ok) { set.status = 401; return { error: auth.reason }; }
 
       const limits = limitsFor(app, auth.via);

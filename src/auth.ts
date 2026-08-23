@@ -17,6 +17,16 @@ import { verifyMessage } from 'ethers';
 /** How far a signed request's timestamp may drift before it is rejected. */
 export const MAX_SIGNATURE_AGE_MS = 5 * 60_000;
 
+/**
+ * How far ahead of us a client's clock may be.
+ *
+ * Age used to be measured with Math.abs, which accepts a timestamp as far in
+ * the FUTURE as in the past — doubling the window to ten minutes and, worse,
+ * letting someone pre-mint signatures that stay valid until their timestamp
+ * finally ages out. Small and one-directional: real clock skew is seconds.
+ */
+export const MAX_CLOCK_SKEW_MS = 30_000;
+
 export type AuthResult =
   | { ok: true; address: string; via: 'signature' }
   | { ok: true; address: string; via: 'api-key' }
@@ -58,10 +68,27 @@ export interface SignedRequest {
   apiKey?: string;
 }
 
+export interface AuthOptions {
+  /**
+   * Spend this signature, once. Returns false if it has been seen before.
+   *
+   * Injected rather than reached for, so this module stays pure and the
+   * replay store is the caller's concern. Omitted means no replay protection
+   * — acceptable only where nothing is spent.
+   *
+   * `now` is passed through deliberately. The store prunes expired rows, and
+   * if it prunes against the wall clock while this function reasons about an
+   * injected one, the two disagree and every signature looks unused. They
+   * agree in production and diverge under test, which is the worst way round.
+   */
+  consumeSignature?: (hash: string, expiresAt: number, now: number) => boolean;
+}
+
 export async function authenticate(
   req: SignedRequest,
   appApiKeyHash: string | null,
   now = Date.now(),
+  opts: AuthOptions = {},
 ): Promise<AuthResult> {
   // API key path — for callers that can actually keep a secret.
   if (req.apiKey) {
@@ -75,7 +102,11 @@ export async function authenticate(
   if (!req.address || !req.signature || !req.timestamp) {
     return { ok: false, reason: 'provide either an API key, or address + signature + timestamp' };
   }
-  const age = Math.abs(now - req.timestamp);
+  // Directional, not absolute. See MAX_CLOCK_SKEW_MS.
+  if (req.timestamp > now + MAX_CLOCK_SKEW_MS) {
+    return { ok: false, reason: 'signature timestamp is in the future' };
+  }
+  const age = now - req.timestamp;
   if (age > MAX_SIGNATURE_AGE_MS) {
     return { ok: false, reason: `signature timestamp is ${Math.round(age / 1000)}s out of date` };
   }
@@ -88,6 +119,15 @@ export async function authenticate(
   }
   if (recovered.toLowerCase() !== req.address.toLowerCase()) {
     return { ok: false, reason: 'signature does not match the given address' };
+  }
+
+  // Spent last, and only once the signature is known good — otherwise a
+  // garbage signature could burn the slot for the real one.
+  if (opts.consumeSignature) {
+    const hash = await sha256Hex(new TextEncoder().encode(req.signature));
+    if (!opts.consumeSignature(hash, req.timestamp + MAX_SIGNATURE_AGE_MS, now)) {
+      return { ok: false, reason: 'signature has already been used' };
+    }
   }
   return { ok: true, address: recovered.toLowerCase(), via: 'signature' };
 }

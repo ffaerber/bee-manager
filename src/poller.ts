@@ -285,7 +285,21 @@ export class Poller {
     // otherwise a batch that vanished this tick is never compared.
     const known = this.db.liveKnownBatchIds();
     const unmanaged = this.db.unmanagedBatchIds();
-    for (const gone of findDisappeared(known, batches)) {
+    // An empty list is not evidence that every batch expired at once.
+    //
+    // bee.stamps() maps a missing payload to [], so a node restarting
+    // mid-sync, or any 200 with an unexpected body, reads identically to "all
+    // batches gone". Acting on it marks every batch dead and fires a
+    // batch_disappeared storm telling the operator their data is unrecoverable
+    // — the single most alarming message this service can send, on no
+    // evidence. Batches expire one at a time; all of them vanishing together
+    // means the reading is wrong, not the node.
+    const massVanish = batches.length === 0 && known.length > 0;
+    if (massVanish) {
+      console.warn(`[poll] /stamps returned nothing while ${known.length} batches were known — ` +
+                   `treating as a bad reading, not as expiry`);
+    }
+    for (const gone of massVanish ? [] : findDisappeared(known, batches)) {
       if (this.db.markGone(gone, now)) {
         // An unmanaged batch expiring is the intended outcome, not an incident.
         if (unmanaged.has(gone)) {
@@ -371,6 +385,11 @@ export class Poller {
                  `Released so the batch can be acted on again — check whether it landed before assuming it did not.`,
       });
     }
+
+    // Finish any dilute whose restoring top-up never happened, before
+    // planning. A stranded composite has already been paid for in capacity;
+    // the only thing missing is the transaction that buys the TTL back.
+    await this.resumeAwaitingTopup();
 
     const plans = evaluateAll(managedBatches, ctx);
     for (const plan of plans) await this.handle(plan, batches);
@@ -517,6 +536,49 @@ export class Poller {
     await this.execute(plan, batch);
   }
 
+  /**
+   * Complete dilutes that landed without their restoring top-up.
+   *
+   * Resumed from the ledger rather than replanned: the per-chunk amount was
+   * decided and recorded before the dilute was submitted, so this pays exactly
+   * what was intended rather than re-deriving it from a chain state that has
+   * moved on. Never throws — a failed resume stays `awaiting-topup` and is
+   * retried next tick, which is the correct behaviour for a batch that is
+   * currently at half the life it was paid for.
+   */
+  private async resumeAwaitingTopup(): Promise<void> {
+    for (const row of this.db.awaitingTopup()) {
+      const perChunk = BigInt(row.amount);
+      if (perChunk <= 0n) {
+        this.db.updateActionStatus(row.id, 'confirmed', undefined, 'awaiting-topup');
+        continue;
+      }
+      const topupId = this.db.recordAction({
+        batchId: row.batch_id, appName: null, kind: 'topup',
+        amount: perChunk, cost: 0n, status: 'submitted',
+        reason: 'resuming the top-up that restores TTL after an earlier dilute', error: null,
+      });
+      try {
+        await this.bee.topUp(row.batch_id, perChunk);
+        this.db.updateActionStatus(topupId, 'confirmed');
+        this.db.updateActionStatus(row.id, 'confirmed', undefined, 'awaiting-topup');
+        console.log(`[poll] resumed the restoring top-up for ${row.batch_id.slice(0, 12)}…`);
+      } catch (e: any) {
+        const msg = e?.message ?? String(e);
+        // Indeterminate stays submitted — it may yet land, and a second
+        // top-up is the thing to avoid.
+        if (!(e instanceof BeeIndeterminateError)) {
+          this.db.updateActionStatus(topupId, 'failed', msg, 'submitted');
+        }
+        await this.alerter.send({
+          event: 'topup_failed', level: 'warn', batchId: row.batch_id,
+          message: `A batch was diluted but its restoring top-up has not landed: ${msg}. ` +
+                   `It is running at half the TTL it was paid for until this succeeds.`,
+        });
+      }
+    }
+  }
+
   /** The only place in the codebase that spends money on a schedule. */
   /**
    * Chequebook health, and the rate it is being spent at.
@@ -585,7 +647,13 @@ export class Poller {
     // the ledger enforces it rather than each caller remembering to.
     const id = this.db.recordActionIfIdle({
       batchId: plan.batchId, appName: batch?.label ?? null, kind,
-      amount, cost: plan.cost, status: 'submitted', reason: plan.reason, error: null,
+      // A dilute moves no money: it spreads the SAME per-chunk amount over
+      // twice the chunks. plan.cost is the price of the top-up that restores
+      // the TTL afterwards, and charging it here as well made one spend appear
+      // twice in the 24h ledger — self-throttling the daemon at roughly half
+      // its configured budget, which reads as a broken cap rather than a bug.
+      amount, cost: plan.kind === 'dilute' ? 0n : plan.cost,
+      status: 'submitted', reason: plan.reason, error: null,
     });
     if (id == null) {
       console.log(`[poll] skipped ${kind} on ${plan.batchId.slice(0, 12)}… — already in flight`);
@@ -604,7 +672,12 @@ export class Poller {
         // run to expiry. Observed on t4t-v3: a dilute landed, the top-up did
         // not, and the batch sat blocked for hours with 24 days of life left
         // and no way to renew it.
-        this.db.updateActionStatus(id, 'confirmed');
+        // Not `confirmed`: the dilute landed, but the restore it exists to
+        // pay for has not. Marking it done here is what let a crash strand a
+        // batch at half its TTL with nothing on record. Still not `submitted`
+        // either — that would lock the batch out of the planner, which is the
+        // failure this ordering was originally written to avoid.
+        this.db.updateActionStatus(id, plan.thenTopup > 0n ? 'awaiting-topup' : 'confirmed');
         await this.alerter.send({
           event: 'dilute_executed', level: 'info', batchId: plan.batchId,
           message: `Diluted to depth ${plan.newDepth}: ${plan.reason}`,
@@ -619,6 +692,8 @@ export class Poller {
           });
           await this.bee.topUp(plan.batchId, plan.thenTopup);
           this.db.updateActionStatus(topupId, 'confirmed');
+          // Composite complete.
+          this.db.updateActionStatus(id, 'confirmed', undefined, 'awaiting-topup');
         }
       } else {
         await this.bee.topUp(plan.batchId, plan.amountPerChunk);

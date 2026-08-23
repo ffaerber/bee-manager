@@ -127,10 +127,11 @@ export function createBeeApi({ bee, db, poller, adminToken }: BeeApiDeps) {
     .post('/bzz', ({ request, headers, set }) => upload(request, headers as any, set, true))
 
     // ── downloads: no stamp involved, proxied from the node ──────────────
-    .get('/bytes/:ref', ({ params, headers, set }) => download(`/bytes/${params.ref}`, headers as any, set))
-    .get('/bzz/:ref', ({ params, headers, set }) => download(`/bzz/${params.ref}`, headers as any, set))
+    .get('/bytes/:ref', ({ params, headers, set }) => download(`/bytes/${params.ref}`, headers as any, set, params.ref))
+    .get('/bzz/:ref', ({ params, headers, set }) => download(`/bzz/${params.ref}`, headers as any, set, params.ref))
     .get('/bzz/:ref/*', ({ params, headers, set }) =>
-      download(`/bzz/${params.ref}/${(params as any)['*'] ?? ''}`, headers as any, set))
+      download(`/bzz/${params.ref}/${(params as any)['*'] ?? ''}`, headers as any, set,
+               params.ref, (params as any)['*'] ?? ''))
 
     // Everything else on the node — admin only. See passthrough() below.
     .all('/*', passthrough());
@@ -197,9 +198,39 @@ export function createBeeApi({ bee, db, poller, adminToken }: BeeApiDeps) {
    * directions — and because the node is internal-only, so a redirect would
    * point at something the caller cannot reach.
    */
-  async function download(path: string, headers: Record<string, string | undefined>, set: { status?: number | string }) {
+  async function download(
+    path: string,
+    headers: Record<string, string | undefined>,
+    set: { status?: number | string },
+    ref?: string,
+    wildcard?: string,
+  ) {
     const app = await appFor(headers);
     if (!app) { set.status = 401; return beeError(401, 'unknown or missing API key'); }
+
+    /**
+     * Validate what gets concatenated onto the Bee URL.
+     *
+     * Traversal here does not currently work — `..` and `%2e%2e` are collapsed
+     * before routing, so they never match this route, and the encoded forms
+     * that do survive (`%2f`, `%5c`) are exactly the ones fetch never decodes.
+     * That is a property of the router, not a decision anyone made, and it is
+     * not something to keep relying on: a framework change or a proxy that
+     * normalises differently would quietly turn an app key into a credential
+     * for the node's wallet.
+     *
+     * So the check is explicit, and it is deliberately about the shape of the
+     * input rather than about the specific encodings known to be harmless.
+     */
+    if (ref !== undefined && !/^[0-9a-fA-F]{64,128}$/.test(ref)) {
+      set.status = 400;
+      return beeError(400, 'reference must be a hex swarm address');
+    }
+    if (wildcard && /(^|[/\\])\.\.?([/\\]|$)|%2e|%2f|%5c|\\|^\//i.test(wildcard)) {
+      set.status = 400;
+      return beeError(400, 'path may not contain traversal or encoded separators');
+    }
+
     try {
       const res = await bee.raw(path);
       set.status = res.status;

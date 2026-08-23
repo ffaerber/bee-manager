@@ -156,17 +156,7 @@ describe('an app key must not reach the node through the download route', () => 
     });
   }
 
-  /**
-   * FAILS TODAY — the residual half of issue #2, kept visible rather than
-   * asserted away.
-   *
-   * Traversal itself is blocked (above), but the reference and the wildcard
-   * are still forwarded to Bee unvalidated: `not-a-ref` comes back 200. That
-   * is not an authz bypass, it is the absence of the check that would make
-   * the block deliberate instead of a side effect of how the router happens
-   * to normalise paths. Unskip when the validation lands.
-   */
-  it.skip('rejects a reference that is not a hex swarm address', async () => {
+  it('rejects a reference that is not a hex swarm address', async () => {
     expect(await rawGet('/bzz/not-a-ref/index.html')).toMatch(/HTTP\/1\.[01] 4\d\d/);
   });
 });

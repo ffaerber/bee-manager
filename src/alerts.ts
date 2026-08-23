@@ -60,7 +60,8 @@ export class Alerter {
   async send(alert: Alert): Promise<boolean> {
     // Errors bypass the cooldown for their first occurrence but are still keyed,
     // so a persistently failing node does not become a firehose.
-    if (!this.db.shouldAlert(this.key(alert), this.cooldownMs)) return false;
+    const key = this.key(alert);
+    if (!this.db.shouldAlert(key, this.cooldownMs)) return false;
 
     const line = `[${alert.level}] ${alert.event}: ${alert.message}`;
     console.log(line);
@@ -89,6 +90,12 @@ export class Alerter {
       // Never let alerting failure take down the poller — the alert is the
       // secondary concern; keeping the stamps alive is the primary one.
       console.error(`[alerts] webhook failed: ${e?.message ?? e}`);
+      // Give the dedup key back. It was written before the POST, so leaving it
+      // set would suppress every identical alert for the whole cooldown after
+      // a delivery that never happened — and the events this matters most for
+      // (topup_failed, batch_disappeared) are one-shot. A lost alert about a
+      // money or data incident would be lost for good.
+      this.db.clearAlert(key);
       return false;
     }
   }

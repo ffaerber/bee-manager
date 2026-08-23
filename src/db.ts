@@ -16,7 +16,24 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 export type ActionKind = 'topup' | 'dilute' | 'buy' | 'config';
-export type ActionStatus = 'planned' | 'submitted' | 'confirmed' | 'failed' | 'blocked' | 'dry-run';
+export type ActionStatus =
+  | 'planned' | 'submitted' | 'confirmed' | 'failed' | 'blocked' | 'dry-run'
+  /**
+   * A dilute that landed, whose restoring top-up has not.
+   *
+   * Dilution halves TTL — the same per-chunk amount now covers twice the
+   * chunks — and the top-up that restores it is a SECOND transaction. If the
+   * process dies in between, the batch is left at half its life with nothing
+   * recording that a restore was intended, and a normal poll will not act
+   * until TTL falls under the threshold. A batch diluted from 40d to 20d
+   * against a 14d threshold sits there for six days having already been paid
+   * for.
+   *
+   * This status is that missing record: it is not in-flight (the batch must
+   * stay actionable — leaving the row `submitted` is what once locked t4t-v3
+   * out of the planner entirely) and it is not done. The poller resumes it.
+   */
+  | 'awaiting-topup';
 
 export interface ActionRow {
   id: number;
@@ -230,6 +247,12 @@ export class Db {
         value      TEXT NOT NULL,
         updated_at INTEGER NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS used_signatures (
+        hash       TEXT PRIMARY KEY,
+        expires_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_used_sig_exp ON used_signatures(expires_at);
 
       CREATE TABLE IF NOT EXISTS uploads (
         id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -464,22 +487,31 @@ export class Db {
    * submit an on-chain transaction. `WHERE NOT EXISTS` makes the ledger row
    * itself the lock, which is the only thing both the poller and every HTTP
    * handler already agree to look at.
+   *
+   * Scoped by batch when the action names one, and by KIND when it does not.
+   * A buy has no batch yet and is recorded with batch_id NULL, so a
+   * batch-only guard reduces to `WHERE NULL = NULL`, never matches, and
+   * silently permits exactly the duplicate it was added to prevent — two
+   * batches bought, neither refundable.
    */
   recordActionIfIdle(a: Omit<ActionRow, 'id' | 'ts'> & { ts?: number }): number | null {
     const res = this.db.query(`
       INSERT INTO actions (ts, batch_id, app_name, kind, amount, cost, status, reason, error)
       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
       WHERE NOT EXISTS (
-        SELECT 1 FROM actions WHERE batch_id = ? AND status = 'submitted'
+        SELECT 1 FROM actions
+        WHERE status = 'submitted'
+          AND (
+            (?10 IS NOT NULL AND batch_id = ?10)
+            OR (?10 IS NULL AND batch_id IS NULL AND kind = ?11)
+          )
       )
     `).run(
       a.ts ?? Date.now(), a.batchId, a.appName, a.kind,
       a.amount.toString(), a.cost.toString(), a.status, a.reason, a.error,
-      a.batchId,
+      a.batchId, a.kind,
     );
-    // changes() is 0 when the guard rejected the insert.
-    const changed = (this.db.query(`SELECT changes() AS n`).get() as any).n > 0;
-    return changed ? Number(res.lastInsertRowid) : null;
+    return Number((res as any).changes ?? 0) > 0 ? Number(res.lastInsertRowid) : null;
   }
 
   /**
@@ -502,8 +534,8 @@ export class Db {
       : `UPDATE actions SET status = ?, error = ? WHERE id = ?`;
     const args: unknown[] = [status, error ?? null, id];
     if (expect) args.push(expect);
-    this.db.query(sql).run(...(args as any));
-    return (this.db.query(`SELECT changes() AS n`).get() as any).n > 0;
+    const res = this.db.query(sql).run(...(args as any));
+    return Number((res as any).changes ?? 0) > 0;
   }
 
   /**
@@ -541,6 +573,19 @@ export class Db {
       `SELECT id, batch_id, kind, ts FROM actions
        WHERE status = 'submitted' AND ts < ?`,
     ).all(now - olderThanMs) as { id: number; batch_id: string | null; kind: string; ts: number }[];
+  }
+
+  /**
+   * Dilutes that landed but were never restored — the resumable half of a
+   * composite. `amount` on these rows is the per-chunk top-up that was
+   * intended, recorded before the dilute was ever submitted.
+   */
+  awaitingTopup() {
+    return this.db.query(
+      `SELECT id, batch_id, amount, ts FROM actions
+       WHERE status = 'awaiting-topup' AND batch_id IS NOT NULL
+       ORDER BY ts ASC`,
+    ).all() as { id: number; batch_id: string; amount: string; ts: number }[];
   }
 
   /** Batches with a submitted-but-unconfirmed action. */
@@ -819,8 +864,7 @@ export class Db {
         AND (SELECT COUNT(*) FROM uploads WHERE app_name = ?2 AND ts > ?5 AND address = ?3) < ?8
     `).run(now, appName, addr, bytes, since,
            limits.appDailyBytes, limits.addressDailyBytes, limits.addressDailyUploads);
-    const changed = (this.db.query(`SELECT changes() AS n`).get() as any).n > 0;
-    return changed ? Number(res.lastInsertRowid) : null;
+    return Number((res as any).changes ?? 0) > 0 ? Number(res.lastInsertRowid) : null;
   }
 
   /** Attach the results of a successful upload to its reservation. */
@@ -865,6 +909,29 @@ export class Db {
        ON CONFLICT(key) DO UPDATE SET ts = ?2`,
     ).run(key, now);
     return true;
+  }
+
+  /**
+   * Spend a signature, once. Returns false if it has already been used.
+   *
+   * A signed upload binds app + content hash + timestamp, which stops a
+   * captured signature being reused for DIFFERENT bytes — but not from being
+   * replayed verbatim. Within the validity window every replay re-uploaded the
+   * same payload to Bee, burning stamp capacity for free, and quota only
+   * limited how fast.
+   *
+   * Rows are kept until the signature would have expired anyway, so the table
+   * stays the size of one window's traffic rather than growing forever.
+   */
+  consumeSignature(hash: string, expiresAt: number, now = Date.now()): boolean {
+    this.db.query(`DELETE FROM used_signatures WHERE expires_at <= ?`).run(now);
+    // The count comes from the statement's own result, not a following
+    // `SELECT changes()`. changes() reports the last statement that MODIFIED
+    // rows, so an INSERT OR IGNORE that ignored still reads back the DELETE's
+    // count above — and the replay check silently passed every time.
+    const res = this.db.query(`INSERT OR IGNORE INTO used_signatures (hash, expires_at) VALUES (?, ?)`)
+      .run(hash, expiresAt);
+    return Number((res as any).changes ?? 0) > 0;
   }
 
   /** Clear a dedup key so the next occurrence alerts immediately. */
