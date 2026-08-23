@@ -21,6 +21,18 @@ import { readFileSync } from 'node:fs';
 
 const cfg = loadConfig();
 const db = new Db(cfg.dbPath);
+
+/**
+ * Quota reservations from a process that is no longer running.
+ *
+ * Swept at boot rather than on a timer: a reservation is released in a catch
+ * block, which a kill -9 or a container redeploy never reaches, and the
+ * orphaned row then holds budget for a full day for an upload that stored
+ * nothing. Anything predating this process cannot belong to an upload still
+ * in flight.
+ */
+const swept = db.clearStaleReservations(Date.now());
+if (swept > 0) console.log(`[boot] released ${swept} upload reservation(s) left by a previous process`);
 const bee = new BeeClient(cfg.beeUrl, cfg.beeTimeoutMs, cfg.beeWriteTimeoutMs, cfg.beeUploadTimeoutMs);
 const alerter = new Alerter(db, cfg.webhookUrl, cfg.alertCooldownMs);
 // First boot only: copy the environment into the settings table, which is

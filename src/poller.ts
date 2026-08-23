@@ -15,10 +15,10 @@ import { ReachabilityFeed, type Reachability } from './reachability';
 import { StakeFeed, heightMismatch, type StakeInfo } from './staking';
 import { PeerMapFeed, type PeerMapState } from './peermap';
 import { Alerter } from './alerts';
-import { evaluateAll, findDisappeared, totalBurnPer30Days, totalCommitted, type EvalContext, type Plan } from './evaluate';
+import { checkCaps, evaluateAll, findDisappeared, totalBurnPer30Days, totalCommitted, type EvalContext, type Plan } from './evaluate';
 import {
   chequebookRunwayDays, chequebookSpendPer30Days,
-  plurToBzz, runwaySeconds, GNOSIS_MS_PER_BLOCK,
+  plurToBzz, runwaySeconds, costPlur, GNOSIS_MS_PER_BLOCK,
 } from './math';
 import type { Config } from './config';
 
@@ -389,9 +389,19 @@ export class Poller {
     // Finish any dilute whose restoring top-up never happened, before
     // planning. A stranded composite has already been paid for in capacity;
     // the only thing missing is the transaction that buys the TTL back.
-    await this.resumeAwaitingTopup();
+    const resumed = await this.resumeAwaitingTopup(batches, ctx);
 
-    const plans = evaluateAll(managedBatches, ctx);
+    // Excluded from planning this tick even though the list above was
+    // refreshed. The snapshot evaluateAll works from was taken BEFORE the
+    // restore, and a batch whose TTL still reads halved is exactly the shape
+    // that triggers a top-up — a second, unintended one, which the in-flight
+    // guard would wave through because the resume row is already `confirmed`.
+    // The refresh is the fix; this is the belt to its braces, and costs
+    // nothing: a batch restored to target needs no action this tick anyway.
+    const plans = evaluateAll(
+      resumed.size ? managedBatches.filter((b) => !resumed.has(b.batchID)) : managedBatches,
+      ctx,
+    );
     for (const plan of plans) await this.handle(plan, batches);
 
     // Never fails the poll: this is context, not a decision input, and the
@@ -546,22 +556,79 @@ export class Poller {
    * retried next tick, which is the correct behaviour for a batch that is
    * currently at half the life it was paid for.
    */
-  private async resumeAwaitingTopup(): Promise<void> {
+  private async resumeAwaitingTopup(
+    batches: Batch[],
+    ctx: EvalContext,
+  ): Promise<Set<string>> {
+    const resumed = new Set<string>();
+
     for (const row of this.db.awaitingTopup()) {
       const perChunk = BigInt(row.amount);
       if (perChunk <= 0n) {
         this.db.updateActionStatus(row.id, 'confirmed', undefined, 'awaiting-topup');
         continue;
       }
-      const topupId = this.db.recordAction({
-        batchId: row.batch_id, appName: null, kind: 'topup',
-        amount: perChunk, cost: 0n, status: 'submitted',
+
+      // The batch has to still exist. If it expired while the restore was
+      // outstanding there is nothing left to buy time for, and paying anyway
+      // would be money into a batch that is gone.
+      const batch = batches.find((b) => b.batchID === row.batch_id);
+      if (!batch) {
+        this.db.updateActionStatus(
+          row.id, 'failed', 'batch no longer present; nothing left to restore', 'awaiting-topup',
+        );
+        continue;
+      }
+
+      // Priced against the batch's CURRENT depth. The per-chunk amount was
+      // decided before the dilute — that part is deliberate, since replanning
+      // would buy a different amount of time than was intended — but what it
+      // COSTS depends on how many chunks that now covers, and the dilute
+      // doubled them.
+      const cost = costPlur(perChunk, batch.depth);
+
+      // Every other path that moves money is capped. This one runs unattended
+      // after a restart, which makes it the last place that should be exempt:
+      // the caps were checked before the crash, and the wallet can have been
+      // drained by anything in between.
+      const verdict = checkCaps(cost, ctx);
+      if (!verdict.allowed) {
+        await this.alerter.send({
+          event: 'topup_blocked', level: 'warn', batchId: row.batch_id,
+          costBzz: plurToBzz(cost),
+          message: `A diluted batch still needs ${plurToBzz(cost).toFixed(3)} xBZZ to restore its ` +
+                   `TTL, but ${verdict.reason}. It stays at half the life it was paid for until ` +
+                   `this can be spent.`,
+        });
+        continue;   // stays awaiting-topup, retried next tick
+      }
+
+      // Claimed, not just recorded. An operator topping this batch up from the
+      // dashboard while a stranded composite waits is exactly the collision
+      // recordActionIfIdle exists to refuse.
+      const topupId = this.db.recordActionIfIdle({
+        batchId: row.batch_id, appName: batch.label ?? null, kind: 'topup',
+        // The real cost, so a resumed spend is visible to the 24h ledger.
+        // Recording 0 here kept it out of spentLast24h even after it landed.
+        amount: perChunk, cost, status: 'submitted',
         reason: 'resuming the top-up that restores TTL after an earlier dilute', error: null,
       });
+      if (topupId == null) continue;   // something else is mid-flight; next tick
+
       try {
         await this.bee.topUp(row.batch_id, perChunk);
         this.db.updateActionStatus(topupId, 'confirmed');
         this.db.updateActionStatus(row.id, 'confirmed', undefined, 'awaiting-topup');
+        resumed.add(row.batch_id);
+
+        // Re-read it, so the batch list this tick plans against reflects the
+        // TTL we just restored rather than the halved one it was fetched with.
+        try {
+          const fresh = await this.bee.stamp(row.batch_id);
+          const i = batches.findIndex((b) => b.batchID === row.batch_id);
+          if (i >= 0) batches[i] = fresh;
+        } catch { /* the caller excludes it from planning regardless */ }
+
         console.log(`[poll] resumed the restoring top-up for ${row.batch_id.slice(0, 12)}…`);
       } catch (e: any) {
         const msg = e?.message ?? String(e);
@@ -577,6 +644,7 @@ export class Poller {
         });
       }
     }
+    return resumed;
   }
 
   /** The only place in the codebase that spends money on a schedule. */

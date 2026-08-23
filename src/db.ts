@@ -867,6 +867,28 @@ export class Db {
     return Number((res as any).changes ?? 0) > 0 ? Number(res.lastInsertRowid) : null;
   }
 
+  /**
+   * Drop reservations left behind by a process that died mid-upload.
+   *
+   * A reservation counts against the budget the moment it is made, and is
+   * released in a catch block — which never runs if the process is killed, the
+   * container is redeployed, or the machine reboots. Those rows then hold
+   * budget for a full 24h window for uploads that stored nothing, and a
+   * crash-looping deploy against a flapping Bee can exhaust an app's daily
+   * allowance without a single chunk being written.
+   *
+   * A NULL reference is what identifies one: every completed upload records
+   * the reference Bee returned. Only rows older than this process are removed,
+   * because a NULL-reference row newer than boot is an upload still in flight
+   * right now, and deleting it would hand out budget twice.
+   */
+  clearStaleReservations(bootTs: number): number {
+    const res = this.db.query(
+      `DELETE FROM uploads WHERE reference IS NULL AND ts < ?`,
+    ).run(bootTs);
+    return Number((res as any).changes ?? 0);
+  }
+
   /** Attach the results of a successful upload to its reservation. */
   finalizeUpload(
     id: number,
@@ -924,14 +946,21 @@ export class Db {
    * stays the size of one window's traffic rather than growing forever.
    */
   consumeSignature(hash: string, expiresAt: number, now = Date.now()): boolean {
-    this.db.query(`DELETE FROM used_signatures WHERE expires_at <= ?`).run(now);
-    // The count comes from the statement's own result, not a following
-    // `SELECT changes()`. changes() reports the last statement that MODIFIED
-    // rows, so an INSERT OR IGNORE that ignored still reads back the DELETE's
-    // count above — and the replay check silently passed every time.
-    const res = this.db.query(`INSERT OR IGNORE INTO used_signatures (hash, expires_at) VALUES (?, ?)`)
-      .run(hash, expiresAt);
-    return Number((res as any).changes ?? 0) > 0;
+    // One transaction. The PRIMARY KEY already makes the claim itself safe
+    // under concurrency, but pruning and claiming as two separate statements
+    // means a reader between them sees a table that is neither the old state
+    // nor the new one. Cheap to make atomic; no reason not to.
+    const claim = this.db.transaction((h: string, exp: number, t: number) => {
+      this.db.query(`DELETE FROM used_signatures WHERE expires_at <= ?`).run(t);
+      // The count comes from the statement's own result, not a following
+      // `SELECT changes()`. changes() reports the last statement that MODIFIED
+      // rows, so an INSERT OR IGNORE that ignored still read back the DELETE's
+      // count above — and the replay check silently passed every time.
+      const r = this.db.query(`INSERT OR IGNORE INTO used_signatures (hash, expires_at) VALUES (?, ?)`)
+        .run(h, exp);
+      return Number((r as any).changes ?? 0) > 0;
+    });
+    return claim(hash, expiresAt, now) as boolean;
   }
 
   /** Clear a dedup key so the next occurrence alerts immediately. */
