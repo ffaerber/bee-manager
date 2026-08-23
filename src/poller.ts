@@ -114,6 +114,19 @@ export class Poller {
   private lastBlock: { block: number; at: number } | null = null;
   private msPerBlock = GNOSIS_MS_PER_BLOCK;
   private timer: Timer | null = null;
+  /**
+   * The tick currently running, if any.
+   *
+   * Two ticks must never run at once. Each one reads the in-flight set, plans
+   * against it, and only then records what it is about to do — so two
+   * overlapping ticks both see an empty in-flight set for the same batch and
+   * both submit. That is a duplicate on-chain spend, and it needs nothing more
+   * exotic than a poll that takes longer than the poll interval, which is
+   * ordinary when a write is waiting on Bee's 5-minute timeout.
+   */
+  private inflightTick: Promise<PollResult> | null = null;
+  /** Set by stop(), so a tick in progress does not schedule another. */
+  private stopped = false;
   last: PollResult | null = null;
 
   /**
@@ -187,14 +200,35 @@ export class Poller {
     return applySettings(this.cfg, this.db.settings());
   }
 
+  /**
+   * Poll on a self-scheduling timer rather than a fixed interval.
+   *
+   * setInterval fires on a schedule regardless of whether the previous
+   * callback finished, so a slow tick gets a second one started underneath it.
+   * Chaining the next timeout in `finally` makes the interval the GAP between
+   * ticks instead: a tick that takes ten minutes simply delays the next one,
+   * which is the correct behaviour for something that spends money.
+   */
   start() {
-    this.tick().catch((e) => console.error('[poll] first tick failed', e));
-    this.timer = setInterval(() => {
-      this.tick().catch((e) => console.error('[poll] tick failed', e));
-    }, this.cfg.pollIntervalMs);
+    this.stopped = false;
+    const loop = async () => {
+      if (this.stopped) return;
+      try {
+        await this.tick();
+      } catch (e) {
+        console.error('[poll] tick failed', e);
+      } finally {
+        if (!this.stopped) this.timer = setTimeout(loop, this.cfg.pollIntervalMs);
+      }
+    };
+    void loop();
   }
 
-  stop() { if (this.timer) clearInterval(this.timer); this.timer = null; }
+  stop() {
+    this.stopped = true;
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+  }
 
   /**
    * Measure block time from successive chainstate reads instead of assuming it.
@@ -214,7 +248,21 @@ export class Poller {
     this.lastBlock = { block: chain.block, at: now };
   }
 
+  /**
+   * One poll.
+   *
+   * Concurrent callers are coalesced onto the tick already running rather than
+   * starting a second one. The scheduler above cannot overlap on its own, but
+   * a manual refresh or a second caller still can, and every one of them would
+   * plan against the same pre-record in-flight snapshot.
+   */
   async tick(): Promise<PollResult> {
+    if (this.inflightTick) return this.inflightTick;
+    this.inflightTick = this.runTick().finally(() => { this.inflightTick = null; });
+    return this.inflightTick;
+  }
+
+  private async runTick(): Promise<PollResult> {
     const now = Date.now();
     // Environment plus dashboard overrides, resolved once per cycle.
     const cfg = this.effective();
@@ -309,7 +357,14 @@ export class Poller {
     // is the audit trail for money, and "we submitted this and never saw it
     // land" is a fact worth keeping.
     for (const a of this.db.staleSubmitted(STALE_INFLIGHT_MS, now)) {
-      this.db.updateActionStatus(a.id, 'failed', `never confirmed; released after ${STALE_INFLIGHT_MS / 60_000} min`);
+      // Only if it is STILL submitted. Between the select above and this
+      // write, the transaction may have landed and marked the row confirmed —
+      // overwriting that would turn a real spend into a phantom failure and
+      // unlock the batch for a second one.
+      const released = this.db.updateActionStatus(
+        a.id, 'failed', `never confirmed; released after ${STALE_INFLIGHT_MS / 60_000} min`, 'submitted',
+      );
+      if (!released) continue;   // it confirmed while we were looking at it
       await this.alerter.send({
         event: 'topup_failed', level: 'warn', batchId: a.batch_id ?? undefined,
         message: `A ${a.kind} submitted ${Math.round((now - a.ts) / 60_000)} min ago was never confirmed. ` +

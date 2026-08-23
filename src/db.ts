@@ -452,8 +452,28 @@ export class Db {
     return Number(res.lastInsertRowid);
   }
 
-  updateActionStatus(id: number, status: ActionStatus, error?: string) {
-    this.db.query(`UPDATE actions SET status = ?, error = ? WHERE id = ?`).run(status, error ?? null, id);
+  /**
+   * Move an action to a new status. Returns whether the row actually changed.
+   *
+   * `expect` makes the write conditional, and the stale-release path must use
+   * it. That path SELECTs `submitted` rows and then writes `failed`; in
+   * between, the transaction it gave up on can land and mark the same row
+   * `confirmed`. An unguarded UPDATE then rewrites a real, confirmed spend as
+   * a failure — the ledger stops matching the chain, and because the row no
+   * longer reads as in-flight the planner is free to spend on that batch
+   * again.
+   *
+   * The confirm path stays unconditional on purpose: if a released action
+   * turns out to have landed, `confirmed` is the truth and should win.
+   */
+  updateActionStatus(id: number, status: ActionStatus, error?: string, expect?: ActionStatus): boolean {
+    const sql = expect
+      ? `UPDATE actions SET status = ?, error = ? WHERE id = ? AND status = ?`
+      : `UPDATE actions SET status = ?, error = ? WHERE id = ?`;
+    const args: unknown[] = [status, error ?? null, id];
+    if (expect) args.push(expect);
+    this.db.query(sql).run(...(args as any));
+    return (this.db.query(`SELECT changes() AS n`).get() as any).n > 0;
   }
 
   /**
