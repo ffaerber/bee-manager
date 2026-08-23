@@ -96,19 +96,11 @@ export function PeerMap({ state }: { state: State | null }) {
   const clustered = clusters.some((c) => c.count > 1);
 
   return (
-    <div className="card">
-      <div className="card-head">
-        <div className="spread">
-          <h2>Peers</h2>
-          <span className="status">{pm.connected} connected</span>
-        </div>
-        <p className="muted" style={{ fontSize: 12 }}>
-          The nodes this one is connected to. Bee knows who they are; where they are comes from an
-          outside index, resolved a few at a time and remembered.
-        </p>
-      </div>
-
-      <div style={{ position: 'relative' }} ref={wrapRef}>
+    <div className="peer-map">
+      {/* Half width, so half height too — the aspect ratio is fixed by the
+          viewBox. It sits under the node's own figures as a supporting
+          picture, not as the subject of the card. */}
+      <div className="peer-map-figure" style={{ position: 'relative' }} ref={wrapRef}>
         <svg
           viewBox={`0 0 ${WORLD_VIEWBOX.w} ${WORLD_VIEWBOX.h}`}
           style={{ width: '100%', height: 'auto', display: 'block' }}
@@ -179,7 +171,7 @@ export function PeerMap({ state }: { state: State | null }) {
 
       {/* What the map is NOT showing. Said plainly, because a map that looks
           complete and is not would understate how spread out the network is. */}
-      <p className="muted" style={{ fontSize: 12, marginTop: 14 }}>
+      <p className="muted" style={{ fontSize: 11, marginTop: 10 }}>
         {pm.located.length} of {pm.connected} peers placed
         {pm.pending > 0 && <> · {pm.pending} still resolving</>}
         {pm.unplaceable > 0 && <> · {pm.unplaceable} not in the index</>}
@@ -193,13 +185,13 @@ export function PeerMap({ state }: { state: State | null }) {
       {/* A legend, because two colours alone must not be what tells the marks
           apart — and because "which dot is mine" is the first question the
           map now invites. */}
-      <div className="row" style={{ gap: 16, marginTop: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+      <div className="row" style={{ gap: 14, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         {me && (
-          <span className="muted" style={{ fontSize: 12 }}>
+          <span className="muted" style={{ fontSize: 11 }}>
             <span className="map-key is-self" /> this node
           </span>
         )}
-        <span className="muted" style={{ fontSize: 12 }}>
+        <span className="muted" style={{ fontSize: 11 }}>
           <span className="map-key is-peer" /> peers
         </span>
       </div>
@@ -208,15 +200,15 @@ export function PeerMap({ state }: { state: State | null }) {
           network, it is missing from the index — and inventing a position to
           fill the gap is the one thing this map must not do. */}
       {!me && (
-        <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+        <p className="muted" style={{ fontSize: 11, marginTop: 8 }}>
           This node is not drawn: neither the index nor its advertised address gave a position.
         </p>
       )}
 
       {byCountry.length > 0 && (
-        <div className="row" style={{ gap: 14, marginTop: 10, flexWrap: 'wrap' }}>
-          {byCountry.slice(0, 8).map(([c, n]) => (
-            <span key={c} className="muted" style={{ fontSize: 12 }}>
+        <div className="row" style={{ gap: 14, marginTop: 8, flexWrap: 'wrap' }}>
+          {byCountry.slice(0, 6).map(([c, n]) => (
+            <span key={c} className="muted" style={{ fontSize: 11 }}>
               {c} <strong style={{ color: 'var(--text-secondary)' }}>{n}</strong>
             </span>
           ))}

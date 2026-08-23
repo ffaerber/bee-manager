@@ -1,4 +1,5 @@
 import { shortAddr } from './format';
+import { PeerMap } from './PeerMap';
 import type { State } from './api';
 
 /**
@@ -110,6 +111,12 @@ export function BeeNode({ state }: { state: State | null }) {
             is fine, and a blank space here would read as one. */}
         {!dialable && !undialable && <>Reachability unknown — no outside view available right now.</>}
       </p>
+
+      {/* Where those peers are. Inside this card rather than beside it: the
+          peer COUNT is already a tile above, and a map of the same peers is
+          the same subject — it was a separate card claiming equal weight with
+          the wallet and the batches. */}
+      <PeerMap state={state} />
 
       {/* Abbreviated for the same reason as the wallet address: 64 hex
           characters do not fit a phone, and at full width it pushed the card

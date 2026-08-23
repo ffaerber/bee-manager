@@ -349,6 +349,27 @@ tr:last-child td { border-bottom: none; }
    many peers share the spot. Radius is computed in the component from the
    measured card width, so it is NOT set here — a CSS `r` would apply one
    value to every dot and flatten the counts back out. */
+/* The map sits inside the Bee node card as a supporting figure. Separated
+   from the tiles above it by a rule, the same way the reachability sentence
+   is. */
+.peer-map { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--rule); }
+
+/* Half width — and therefore half height, since the viewBox fixes the aspect
+   ratio at 2:1. Asked for directly: at full width it dominated a card whose
+   subject is the node, not the network.
+
+   The dots do NOT shrink with it. Their radius is computed from the measured
+   container width in screen pixels, so a 5px dot stays 5px; halving the map
+   makes the land smaller and leaves the marks legible. */
+.peer-map-figure { max-width: 50%; }
+
+@media (max-width: 759px) {
+  /* On a phone, 50% of ~320px leaves a map 160px across — land features stop
+     being readable well before the dots do. Two thirds keeps the continents
+     recognisable while still reading as a figure rather than the subject. */
+  .peer-map-figure { max-width: 66%; }
+}
+
 .peer-dot { fill: var(--good); fill-opacity: 0.85; }
 
 /* This node. Blue against the peers' green — a pair checked for colour-vision
