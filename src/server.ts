@@ -625,11 +625,19 @@ export function createServer(deps: ServerDeps) {
           if (!verdict.allowed) { set.status = 403; return { error: `blocked by caps: ${verdict.reason}` }; }
           if (effective().dryRun) return json({ dryRun: true, wouldTopup: preview });
 
-          const actionId = db.recordAction({
+          // Atomic claim, not a second check. checkCaps() above read the
+          // in-flight set, but between that read and this insert another
+          // request — a double-click, a second tab, a retry — could pass the
+          // same check. The row IS the lock.
+          const actionId = db.recordActionIfIdle({
             batchId: params.id, appName: null, kind: 'topup',
             amount: perChunk, cost, status: 'submitted',
             reason: `manual top-up to ${targetDays}d`, error: null,
           });
+          if (actionId == null) {
+            set.status = 409;
+            return { error: 'another top-up or dilute is already in flight for this batch' };
+          }
           try {
             await bee.topUp(params.id, perChunk);
             db.updateActionStatus(actionId, 'confirmed');
@@ -734,11 +742,17 @@ export function createServer(deps: ServerDeps) {
           }
           if (cfg.dryRun) return json({ dryRun: true, wouldDilute: preview });
 
-          const actionId = db.recordAction({
+          // Same atomic claim as the top-up path: dilution is irreversible,
+          // so submitting it twice is worse than refusing once.
+          const actionId = db.recordActionIfIdle({
             batchId: params.id, appName: null, kind: 'dilute',
             amount: BigInt(target), cost: 0n, status: 'submitted',
             reason: `manual dilute ${b.depth} -> ${target}`, error: null,
           });
+          if (actionId == null) {
+            set.status = 409;
+            return { error: 'another top-up or dilute is already in flight for this batch' };
+          }
           try {
             await bee.dilute(params.id, target);
             db.updateActionStatus(actionId, 'confirmed');
@@ -1044,7 +1058,8 @@ export function createServer(deps: ServerDeps) {
       }, app.apiKeyHash);
       if (!auth.ok) { set.status = 401; return { error: auth.reason }; }
 
-      const verdict = checkQuota(db, app, auth.address, bytes.byteLength, limitsFor(app, auth.via));
+      const limits = limitsFor(app, auth.via);
+      const verdict = checkQuota(db, app, auth.address, bytes.byteLength, limits);
       if (!verdict.allowed) {
         set.status = 429;
         if (verdict.appBudgetExhausted) {
@@ -1054,6 +1069,15 @@ export function createServer(deps: ServerDeps) {
           });
         }
         return { error: verdict.reason, remaining: verdict.remaining };
+      }
+
+      // The check above produced the message; this is what enforces it.
+      // Claimed before the upload so concurrent requests cannot all pass on
+      // the same pre-upload totals.
+      const reservation = db.reserveUpload(app.name, auth.address, bytes.byteLength, limits);
+      if (reservation == null) {
+        set.status = 429;
+        return { error: 'daily quota exhausted by requests already in flight', remaining: verdict.remaining };
       }
 
       // Collection upload: a tar of a built site, so `make deploy-frontend` can
@@ -1071,7 +1095,7 @@ export function createServer(deps: ServerDeps) {
           indexDocument: (headers['swarm-index-document'] as string) || undefined,
           errorDocument: (headers['swarm-error-document'] as string) || undefined,
         });
-        db.recordUpload(app.name, auth.address, bytes.byteLength, reference, {
+        db.finalizeUpload(reservation, reference, {
           batchId: app.batchId,
           name: (headers['x-filename'] as string) || undefined,
           contentType: (headers['x-content-type'] as string) || undefined,
@@ -1080,6 +1104,8 @@ export function createServer(deps: ServerDeps) {
         const room = await fullnessAfterUpload({ poller, db, alerter, cfg }, app.batchId!);
         return json({ reference, bytes: bytes.byteLength, remaining: verdict.remaining, ...room });
       } catch (e: any) {
+        // Nothing stored, no stamp capacity used — give the budget back.
+        db.releaseUpload(reservation);
         set.status = 502;
         return { error: `upload failed: ${e?.message ?? e}` };
       }

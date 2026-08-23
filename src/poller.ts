@@ -578,10 +578,19 @@ export class Poller {
 
     // Recorded before the call: if the process dies mid-transaction the ledger
     // shows `submitted`, which blocks a duplicate on the next poll.
-    const id = this.db.recordAction({
+    // Claimed atomically. The planner already skips batches it can see are
+    // in flight, but that read happens before an `await` on the alerter — and
+    // it cannot see a manual action submitted from the dashboard a moment ago,
+    // or another process entirely. Making the insert itself conditional means
+    // the ledger enforces it rather than each caller remembering to.
+    const id = this.db.recordActionIfIdle({
       batchId: plan.batchId, appName: batch?.label ?? null, kind,
       amount, cost: plan.cost, status: 'submitted', reason: plan.reason, error: null,
     });
+    if (id == null) {
+      console.log(`[poll] skipped ${kind} on ${plan.batchId.slice(0, 12)}… — already in flight`);
+      return;
+    }
 
     try {
       if (plan.kind === 'dilute') {

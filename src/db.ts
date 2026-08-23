@@ -453,6 +453,36 @@ export class Db {
   }
 
   /**
+   * Record an action ONLY if nothing is already in flight for that batch.
+   *
+   * Returns the new row id, or null if the batch was already claimed.
+   *
+   * The check and the claim have to be one statement. Every caller used to
+   * read inFlightBatchIds(), decide, and then insert — and between those two
+   * steps another request could do exactly the same thing. Two tabs, a
+   * double-click, or a retried request would each pass the check and each
+   * submit an on-chain transaction. `WHERE NOT EXISTS` makes the ledger row
+   * itself the lock, which is the only thing both the poller and every HTTP
+   * handler already agree to look at.
+   */
+  recordActionIfIdle(a: Omit<ActionRow, 'id' | 'ts'> & { ts?: number }): number | null {
+    const res = this.db.query(`
+      INSERT INTO actions (ts, batch_id, app_name, kind, amount, cost, status, reason, error)
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+      WHERE NOT EXISTS (
+        SELECT 1 FROM actions WHERE batch_id = ? AND status = 'submitted'
+      )
+    `).run(
+      a.ts ?? Date.now(), a.batchId, a.appName, a.kind,
+      a.amount.toString(), a.cost.toString(), a.status, a.reason, a.error,
+      a.batchId,
+    );
+    // changes() is 0 when the guard rejected the insert.
+    const changed = (this.db.query(`SELECT changes() AS n`).get() as any).n > 0;
+    return changed ? Number(res.lastInsertRowid) : null;
+  }
+
+  /**
    * Move an action to a new status. Returns whether the row actually changed.
    *
    * `expect` makes the write conditional, and the stale-release path must use
@@ -750,6 +780,69 @@ export class Db {
        WHERE app_name = ?1 AND ts > ?2 AND (?3 IS NULL OR address = ?3)`,
     ).get(appName, now - windowMs, address?.toLowerCase() ?? null) as any;
     return Number(row?.total ?? 0);
+  }
+
+  /**
+   * Claim quota for an upload BEFORE it happens, in one statement.
+   *
+   * Returns the reserved row id, or null when the claim would breach a
+   * budget. Finalise it with finalizeUpload() when Bee accepts the data, or
+   * releaseUpload() when it does not.
+   *
+   * checkQuota() reads historical totals, the upload then streams to Bee, and
+   * only afterwards is a row written. Every concurrent request therefore sees
+   * the same pre-upload totals and every one of them passes: fifty parallel
+   * 4.9 MB uploads all observe an empty budget and land ~245 MB against a
+   * 256 MB cap. The budget is the documented blast radius for a leaked app
+   * key, so under concurrency it was decorative.
+   *
+   * The reservation IS an uploads row. It counts toward the sums immediately —
+   * which is the point — and is deleted if the upload fails, so a failed
+   * attempt does not permanently consume budget.
+   */
+  reserveUpload(
+    appName: string,
+    address: string,
+    bytes: number,
+    limits: { appDailyBytes: number; addressDailyBytes: number; addressDailyUploads: number },
+    windowMs = 86_400_000,
+    now = Date.now(),
+  ): number | null {
+    const since = now - windowMs;
+    const addr = address.toLowerCase();
+    const res = this.db.query(`
+      INSERT INTO uploads (ts, app_name, address, bytes, reference, batch_id, name, content_type)
+      SELECT ?1, ?2, ?3, ?4, NULL, NULL, NULL, NULL
+      WHERE
+        (SELECT COALESCE(SUM(bytes), 0) FROM uploads WHERE app_name = ?2 AND ts > ?5) + ?4 <= ?6
+        AND (SELECT COALESCE(SUM(bytes), 0) FROM uploads WHERE app_name = ?2 AND ts > ?5 AND address = ?3) + ?4 <= ?7
+        AND (SELECT COUNT(*) FROM uploads WHERE app_name = ?2 AND ts > ?5 AND address = ?3) < ?8
+    `).run(now, appName, addr, bytes, since,
+           limits.appDailyBytes, limits.addressDailyBytes, limits.addressDailyUploads);
+    const changed = (this.db.query(`SELECT changes() AS n`).get() as any).n > 0;
+    return changed ? Number(res.lastInsertRowid) : null;
+  }
+
+  /** Attach the results of a successful upload to its reservation. */
+  finalizeUpload(
+    id: number,
+    reference: string | null,
+    meta: { batchId?: string; name?: string; contentType?: string } = {},
+  ) {
+    this.db.query(
+      `UPDATE uploads SET reference = ?, batch_id = ?, name = ?, content_type = ? WHERE id = ?`,
+    ).run(reference, meta.batchId ?? null, meta.name ?? null, meta.contentType ?? null, id);
+  }
+
+  /**
+   * Give back a reservation whose upload never landed.
+   *
+   * Deleted rather than flagged: a failed upload stored no chunks and consumed
+   * no stamp capacity, so charging it against the daily budget would let a
+   * flapping client lock itself out of a quota it never used.
+   */
+  releaseUpload(id: number) {
+    this.db.query(`DELETE FROM uploads WHERE id = ?`).run(id);
   }
 
   /** Upload count in the trailing window, for per-address rate limiting. */

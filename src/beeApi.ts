@@ -146,8 +146,21 @@ export function createBeeApi({ bee, db, poller, adminToken }: BeeApiDeps) {
     if (!app.batchId) { set.status = 503; return beeError(503, `no batch assigned to app "${app.name}"`); }
 
     const bytes = new Uint8Array(await request.arrayBuffer());
-    const verdict = checkQuota(db, app, 'api-key', bytes.byteLength, limitsFor(app, 'api-key'));
+    const limits = limitsFor(app, 'api-key');
+    // Two steps on purpose. checkQuota explains WHY a request is refused —
+    // which budget, how much is left — and the reservation below is what
+    // actually enforces it. Reporting the reason from an atomic INSERT is
+    // awkward; racing on a friendly message is not acceptable.
+    const verdict = checkQuota(db, app, 'api-key', bytes.byteLength, limits);
     if (!verdict.allowed) { set.status = 429; return beeError(429, verdict.reason); }
+
+    // Claimed BEFORE the upload, so concurrent requests cannot all pass the
+    // same pre-upload totals.
+    const reservation = db.reserveUpload(app.name, 'api-key', bytes.byteLength, limits);
+    if (reservation == null) {
+      set.status = 429;
+      return beeError(429, 'daily quota exhausted by requests already in flight');
+    }
 
     // Note the Swarm-Postage-Batch-Id header a bee-js client sends is ignored:
     // the key already identifies the app, and its batch is authoritative.
@@ -162,13 +175,17 @@ export function createBeeApi({ bee, db, poller, adminToken }: BeeApiDeps) {
             errorDocument: headers['swarm-error-document'],
           })
         : await bee.uploadBytes(app.batchId, bytes, headers['content-type'] ?? 'application/octet-stream');
-      db.recordUpload(app.name, 'api-key', bytes.byteLength, reference, {
+      db.finalizeUpload(reservation, reference, {
         batchId: app.batchId,
         contentType: headers['content-type'],
       });
       db.setAppReference(app.name, reference);
       return { reference };
     } catch (e: any) {
+      // Nothing was stored and no stamp capacity was used, so the budget goes
+      // back — otherwise a client that keeps failing locks itself out of a
+      // quota it never spent.
+      db.releaseUpload(reservation);
       set.status = 502;
       return beeError(502, e?.message ?? String(e));
     }
