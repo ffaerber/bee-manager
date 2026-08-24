@@ -19,11 +19,16 @@ in `/health`.
 So the rule throughout: a fact decided elsewhere needs checking against
 elsewhere, and anything unknown is reported as unknown rather than as fine.
 
-![The dashboard, a batch page, the bucket map and settings](docs/screenshots/tour.gif)
+![The node and its peers, the wallet, the batch list, the action ledger, a batch page, its bucket map and the settings](docs/screenshots/tour.gif)
 
-*Overview, a batch, its 65,536 buckets as a map, and the settings. Rendered from
-the real build against representative data — the figures, addresses and batch IDs
-above are invented, not a live node's.*
+*The node and where its peers are, the money, the batches, what was done and why,
+a single batch with its 65,536 buckets as a map, and the settings.*
+
+*Shot against the real service — the actual server, poller and pages, responding
+to real requests from a fake Bee node. Nothing is mocked up: the top-up in the
+ledger genuinely fired because that batch fell under its threshold during the
+run. The figures, addresses and batch IDs are invented, not a live node's.
+Regenerate with `tools/demo-server.ts` and `tools/shoot.ts`.*
 
 ## The thing worth understanding
 
