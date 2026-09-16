@@ -6,6 +6,7 @@
  */
 
 import { bzzToPlur, PLUR_PER_BZZ } from './math';
+import { parseOrigins } from './cors';
 
 function str(key: string, fallback: string): string {
   const v = process.env[key];
@@ -81,6 +82,8 @@ export interface Config {
    * retrievals, which is harder to notice and so more worth alerting on.
    */
   chequebookLowPlur: bigint;
+  /** Browser origins allowed to call the public API; `*` for any. See cors.ts. */
+  corsOrigins: string[];
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -146,6 +149,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       alertCooldownMs: int('ALERT_COOLDOWN_MS', 6 * 3_600_000, 0),
       walletLowRunwayDays: int('WALLET_LOW_RUNWAY_DAYS', 30, 1),
       chequebookLowPlur: plur('CHEQUEBOOK_LOW_BZZ', '1'),
+      /**
+       * Open by default, because the public API authenticates with headers
+       * rather than cookies and so CORS protects nothing on it (see cors.ts).
+       * Restricting it is a way to keep other sites from embedding your
+       * gateway, not a security control. The admin surface never gets CORS.
+       */
+      corsOrigins: parseOrigins(str('CORS_ORIGINS', '*')),
     };
 
     if (cfg.topupTargetTtlSec <= cfg.topupWhenTtlBelowSec) {

@@ -379,6 +379,26 @@ postage batches.
 Supply it as `ADMIN_TOKEN_FILE` (a docker swarm secret, so it stays out of git
 and out of `docker service inspect`) or `ADMIN_TOKEN` for local runs.
 
+### CORS
+
+Browser dapps can call `/health`, `/stamps`, `/bytes`, `/bzz`, `/api/apps/*`
+and `/api/public/*` directly, for example through
+[swarm-connect](https://github.com/ffaerber/swarm-connect) with an app key.
+Sending `x-api-key` makes the browser send a preflight `OPTIONS` request first.
+That request is answered before any auth check. Until this was added, the
+preflight fell through to the admin passthrough and got `401`, so no browser
+request ever got through.
+
+Every origin is allowed by default (`CORS_ORIGINS=*`). This is not a hole:
+none of these routes use cookies or other credentials the browser sends on
+its own, so each caller has to bring its own key, and anyone with a key can
+use curl, which ignores CORS anyway. To limit which sites can use the API from
+a browser, set a list: `CORS_ORIGINS=https://app.example,https://other.example`.
+
+The admin API and the node passthrough never get CORS headers, and
+`x-admin-token` is never an allowed request header, so a web page cannot call
+the endpoints that spend money.
+
 ```sh
 bun install && bun test   # 120 tests
 bun src/dryrun.ts         # one read-only poll: state and intended actions

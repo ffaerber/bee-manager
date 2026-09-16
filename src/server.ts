@@ -37,6 +37,7 @@ import type { Config } from './config';
 import { PriceFeed } from './price';
 import { buildGrid, bucketPressure } from './buckets';
 import { EDITABLE, applySettings, envValue, isLoosening, riskOf } from './settings';
+import { corsHeaders, isCorsPath } from './cors';
 
 export interface ServerDeps {
   cfg: Config;
@@ -298,6 +299,16 @@ export function createServer(deps: ServerDeps) {
      */
     .onRequest(({ request, set }) => {
       const path = new URL(request.url).pathname;
+
+      // CORS first: a preflight carries no credentials, so letting it reach
+      // the passthrough answered it with "admin token required" and the
+      // browser never sent the real request. See cors.ts for what is open.
+      const cors = corsHeaders(request, cfg.corsOrigins);
+      if (request.method === 'OPTIONS' && isCorsPath(path)) {
+        return new Response(null, { status: 204, headers: cors ?? {} });
+      }
+      if (cors) Object.assign(set.headers, cors);
+
       if (!path.startsWith('/api/admin')) return;
       if (!adminToken) {
         set.status = 503;
