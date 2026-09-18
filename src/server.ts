@@ -1191,7 +1191,7 @@ export function createServer(deps: ServerDeps) {
 
   // Bee-compatible façade + admin-only passthrough. Registered LAST so every
   // route above wins; bee-js cannot keep a path prefix, so this must be at root.
-  app.use(createBeeApi({ bee, db, poller, adminToken }));
+  app.use(createBeeApi({ bee, db, poller, adminToken, publicDownloads: cfg.publicDownloads }));
 
   return app;
 }

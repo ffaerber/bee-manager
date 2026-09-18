@@ -33,12 +33,14 @@ export interface BeeApiDeps {
   poller: Poller;
   /** When set, the catch-all passthrough additionally requires this header. */
   adminToken: string | null;
+  /** See config.publicDownloads: GET /bzz and /bytes without an API key. */
+  publicDownloads: boolean;
 }
 
 /** Bee's own error shape, so bee-js surfaces failures the way callers expect. */
 const beeError = (code: number, message: string) => ({ code, message });
 
-export function createBeeApi({ bee, db, poller, adminToken }: BeeApiDeps) {
+export function createBeeApi({ bee, db, poller, adminToken, publicDownloads }: BeeApiDeps) {
   /**
    * Paths the monitor owns and must never hand to the passthrough.
    * `/health` is ours (it reports the monitor's health, not the node's), the
@@ -120,6 +122,54 @@ export function createBeeApi({ bee, db, poller, adminToken }: BeeApiDeps) {
         blockNumber: b.blockNumber, immutableFlag: b.immutableFlag, exists: b.exists,
         batchTTL: b.batchTTL, utilizationRatio: b.utilizationRatio,
       };
+    })
+
+    /**
+     * Tags. bee-js calls `createTag()` before an upload whenever a caller wants
+     * progress, and `uploadFile(..., { tag })` is the documented way to use it,
+     * so a façade that claims to take an unmodified bee-js client has to answer
+     * here. Without this the call fell through to the admin-only passthrough,
+     * came back 401, and the upload died before a byte was sent -- from the
+     * browser it did not even look like a 401, because a non-public path gets
+     * no CORS headers and the failure surfaces as a preflight error.
+     *
+     * A tag is a counter on the node, not a claim on a batch: it spends
+     * nothing, and it is scoped to this node rather than to an app. Still key-
+     * gated, because it is the node's state and the key is what says a caller
+     * may touch this façade at all.
+     */
+    .post('/tags', async ({ headers, set }) => {
+      const app = await appFor(headers as any);
+      if (!app) { set.status = 401; return beeError(401, 'unknown or missing API key'); }
+      try {
+        const res = await bee.raw('/tags', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: '{}',
+        });
+        set.status = res.status;
+        return await res.json();
+      } catch (e: any) {
+        set.status = 502;
+        return beeError(502, e?.message ?? String(e));
+      }
+    })
+
+    .get('/tags/:uid', async ({ headers, params, set }) => {
+      const app = await appFor(headers as any);
+      if (!app) { set.status = 401; return beeError(401, 'unknown or missing API key'); }
+      if (!/^\d+$/.test(params.uid)) {
+        set.status = 400;
+        return beeError(400, 'tag uid must be a number');
+      }
+      try {
+        const res = await bee.raw(`/tags/${params.uid}`);
+        set.status = res.status;
+        return await res.json();
+      } catch (e: any) {
+        set.status = 502;
+        return beeError(502, e?.message ?? String(e));
+      }
     })
 
     // ── uploads ──────────────────────────────────────────────────────────
@@ -205,8 +255,28 @@ export function createBeeApi({ bee, db, poller, adminToken }: BeeApiDeps) {
     ref?: string,
     wildcard?: string,
   ) {
-    const app = await appFor(headers);
-    if (!app) { set.status = 401; return beeError(401, 'unknown or missing API key'); }
+    /**
+     * Reads are not gated by default, and the reason is mechanical rather than
+     * philosophical: `<img src>` cannot carry an x-api-key header, so a
+     * key-gated download is one no browser page can perform. Every dapp on
+     * this façade would have to put its key in a query string or read from a
+     * public gateway instead -- which is what pinkchainsaw did, and why its
+     * images went blank the moment it connected here.
+     *
+     * Nothing is given away by serving them. A download spends no postage,
+     * touches no wallet, chequebook or stake endpoint, and returns only
+     * content already addressed by its own hash -- the caller must know the
+     * reference to ask for it. The node serves these chunks to the Swarm
+     * network regardless.
+     *
+     * What it does cost is bandwidth, since any reference resolves, including
+     * content this node never stored. PUBLIC_DOWNLOADS=false restores the key
+     * requirement for an operator who does not want to serve the open web.
+     */
+    if (!publicDownloads) {
+      const app = await appFor(headers);
+      if (!app) { set.status = 401; return beeError(401, 'unknown or missing API key'); }
+    }
 
     /**
      * Validate what gets concatenated onto the Bee URL.
