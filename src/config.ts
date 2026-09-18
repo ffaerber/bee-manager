@@ -84,6 +84,15 @@ export interface Config {
   chequebookLowPlur: bigint;
   /** Browser origins allowed to call the public API; `*` for any. See cors.ts. */
   corsOrigins: string[];
+  /**
+   * Serve GET /bzz and /bytes without an API key. On by default: a browser
+   * cannot put a header on an <img src>, so a key-gated read is a read no web
+   * page can do, and every dapp built on this façade ends up either leaking
+   * its key into a URL or falling back to a public gateway. Reads neither
+   * spend nor reach the node's wallet surface -- the batch is only touched on
+   * upload. Set false to require a key and keep the node off the open web.
+   */
+  publicDownloads: boolean;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -156,6 +165,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
        * gateway, not a security control. The admin surface never gets CORS.
        */
       corsOrigins: parseOrigins(str('CORS_ORIGINS', '*')),
+      publicDownloads: bool('PUBLIC_DOWNLOADS', true),
     };
 
     if (cfg.topupTargetTtlSec <= cfg.topupWhenTtlBelowSec) {

@@ -21,7 +21,7 @@
  */
 
 /** Paths a dapp may call from a browser. Everything else gets no CORS headers. */
-const PUBLIC_PATH = /^\/(health|stamps|bytes|bzz)(\/|$)|^\/api\/(apps|public)(\/|$)/;
+const PUBLIC_PATH = /^\/(health|stamps|bytes|bzz|tags)(\/|$)|^\/api\/(apps|public)(\/|$)/;
 
 /**
  * Request headers a browser may send. Bee's own `swarm-*` upload headers, the

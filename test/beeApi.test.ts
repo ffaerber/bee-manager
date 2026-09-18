@@ -28,6 +28,12 @@ beforeAll(async () => {
       if (url.pathname.startsWith('/bytes/') || url.pathname.startsWith('/bzz/')) {
         return new Response('hello swarm', { headers: { 'content-type': 'text/plain' } });
       }
+      const tag = {
+        uid: 42, startedAt: '2026-01-01T00:00:00Z', address: '',
+        seen: 0, sent: 0, split: 0, stored: 0, synced: 0,
+      };
+      if (url.pathname === '/tags' && req.method === 'POST') return Response.json(tag);
+      if (url.pathname.startsWith('/tags/')) return Response.json(tag);
       if (req.method === 'POST') return Response.json({ reference: REF });
       return Response.json({ stamps: [] });
     },
@@ -120,6 +126,32 @@ describe('an unmodified bee-js client can drive the monitor', () => {
       expect(seen.path).not.toBe(p);
       expect([200, 401, 404, 503]).toContain(res.status);
     }
+  });
+
+  it('createTag() reaches the node, so uploadFile({ tag }) works', async () => {
+    const tag = await bee.createTag();
+    expect(tag.uid).toBe(42);
+    expect(seen.path).toBe('/tags');
+  });
+
+  it('a tag still needs a key', async () => {
+    const res = await fetch(`http://localhost:${monitor.server!.port}/tags`, { method: 'POST' });
+    expect(res.status).toBe(401);
+  });
+
+  /**
+   * The case that matters for a web page: <img src> cannot send x-api-key, so
+   * a read has to work without one or no dapp can show what it uploaded.
+   */
+  it('downloads without any key, for <img src>', async () => {
+    const res = await fetch(`http://localhost:${monitor.server!.port}/bzz/${REF}`);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe('hello swarm');
+  });
+
+  it('still refuses a malformed reference', async () => {
+    const res = await fetch(`http://localhost:${monitor.server!.port}/bzz/not-a-reference`);
+    expect(res.status).toBe(400);
   });
 
   it('rejects a wrong key', async () => {
