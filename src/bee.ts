@@ -192,6 +192,26 @@ export class BeeClient {
   }
 
   /**
+   * A batch as the CHAIN has it, or null if Bee does not list it.
+   *
+   * `/stamps` is Bee's local issuer record, and it can fall behind the chain.
+   * On the live node a dilute of pinkchainsaw-v2 to depth 18 landed, but the
+   * issuer kept reporting 17 for weeks — so every poll saw a full depth-17
+   * batch and re-sent a dilute to 18, which the contract reverted because
+   * increaseDepth only accepts an increase. `/batches` is Bee's batchstore,
+   * fed by chain events, so it carries the depth that actually counts.
+   *
+   * It lists every batch on the network (~375, ~90 KB on mainnet), so it is
+   * read only when about to act, never on every tick.
+   */
+  async chainBatch(batchId: string): Promise<{ depth: number; batchTTL: number } | null> {
+    const d = await this.request('/batches');
+    const id = batchId.toLowerCase().replace(/^0x/, '');
+    const b = (d?.batches ?? []).find((x: any) => String(x.batchID).toLowerCase() === id);
+    return b ? { depth: b.depth, batchTTL: b.batchTTL } : null;
+  }
+
+  /**
    * Per-bucket occupancy for a batch — the exact shape of what is stored.
    *
    * A batch is split into 2^bucketDepth (65,536) buckets, and the leading bits

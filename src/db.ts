@@ -596,6 +596,14 @@ export class Db {
     return new Set(rows.map((r) => r.batch_id));
   }
 
+  /** Time of the latest `failed` action of `kind` on a batch at or after `since`, or null. */
+  lastFailure(batchId: string, kind: ActionKind, since: number): number | null {
+    const r = this.db.query(
+      `SELECT MAX(ts) AS ts FROM actions WHERE batch_id = ? AND kind = ? AND status = 'failed' AND ts >= ?`,
+    ).get(batchId, kind, since) as any;
+    return r?.ts ?? null;
+  }
+
   recentActions(limit = 100): ActionRow[] {
     return this.db.query(`SELECT * FROM actions ORDER BY ts DESC LIMIT ?`).all(limit).map(toAction);
   }

@@ -25,7 +25,9 @@ export type AlertEvent =
   /** Distinct from node_unreachable: WE can reach it, the NETWORK cannot. */
   | 'node_undialable'
   /** Staked height and configured reserve doubling disagree. */
-  | 'stake_height_mismatch';
+  | 'stake_height_mismatch'
+  /** Bee's local /stamps depth is behind the batch's depth on chain. */
+  | 'depth_stale';
 
 export interface Alert {
   event: AlertEvent;

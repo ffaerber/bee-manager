@@ -40,6 +40,17 @@ const CHEQUEBOOK_RATE_WINDOW_MS = 3_600_000;
  */
 const STALE_INFLIGHT_MS = 30 * 60_000;
 
+/**
+ * How long a failed dilute keeps the same batch from being diluted again.
+ *
+ * The planner is stateless: it sees the same full batch on the next tick and
+ * plans the same dilute. A dilute that reverted will revert again, so without
+ * this a revert becomes a transaction every poll — pinkchainsaw-v2 sent one
+ * every 5 minutes for over three weeks. Six hours is long enough to stop that
+ * and short enough that a transient failure is retried the same day.
+ */
+const DILUTE_RETRY_COOLDOWN_MS = 6 * 60 * 60_000;
+
 export interface PollResult {
   ok: boolean;
   batches: Batch[];
@@ -522,6 +533,8 @@ export class Poller {
       return;
     }
 
+    if (plan.kind === 'dilute' && await this.diluteRefused(plan, batch)) return;
+
     // A batch below threshold is worth knowing about even when we cannot act.
     await this.alerter.send({
       event: 'batch_low', level: 'warn', batchId: plan.batchId,
@@ -700,6 +713,44 @@ export class Poller {
       peersOwingUs: node?.peersOwingUs ?? 0,
       low,
     };
+  }
+
+  /**
+   * True when a planned dilute must not be sent this tick.
+   *
+   * The planner reads depth from /stamps, Bee's local issuer record, which can
+   * lag the chain. Two cases make the dilute pointless or a repeat failure:
+   *
+   *   stale depth   The chain already has the batch at (or past) the target
+   *                 depth. increaseDepth reverts on anything but an increase,
+   *                 so sending it only burns gas. Alerted, never sent.
+   *   recent fail   A dilute on this batch failed within the cooldown. Same
+   *                 batch, same plan, same revert — wait instead of resending.
+   *
+   * If /batches cannot be read the dilute is not blocked on that alone: the
+   * cooldown still stops a loop, and a working dilute should not be held up by
+   * a failed read.
+   */
+  private async diluteRefused(plan: Extract<Plan, { kind: 'dilute' }>, batch?: Batch): Promise<boolean> {
+    const name = batch?.label || plan.batchId.slice(0, 12);
+    const chain = await this.bee.chainBatch(plan.batchId).catch(() => null);
+    if (chain && chain.depth >= plan.newDepth) {
+      await this.alerter.send({
+        event: 'depth_stale', level: 'error', batchId: plan.batchId,
+        message: `Batch ${name}: Bee reports depth ${batch?.depth ?? '?'} but the batch is at depth ` +
+                 `${chain.depth} on chain, so a dilute to ${plan.newDepth} would revert. Not sent. ` +
+                 `Bee's local stamp record is stale — restart Bee so it re-reads the batch.`,
+      });
+      return true;
+    }
+    const failedAt = this.db.lastFailure(plan.batchId, 'dilute', Date.now() - DILUTE_RETRY_COOLDOWN_MS);
+    if (failedAt != null) {
+      const mins = Math.round((failedAt + DILUTE_RETRY_COOLDOWN_MS - Date.now()) / 60_000);
+      console.log(`[poll] not diluting ${name} — a dilute failed ${Math.round((Date.now() - failedAt) / 60_000)} min ago; ` +
+                  `next attempt in ~${mins} min`);
+      return true;
+    }
+    return false;
   }
 
   private async execute(plan: Extract<Plan, { kind: 'topup' | 'dilute' }>, batch?: Batch) {
