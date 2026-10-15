@@ -122,3 +122,34 @@ describe('signingMessage', () => {
     expect(m).toBe('swarm-stamp-monitor\napp:app\nsha256:deadbeef\nts:1234');
   });
 });
+
+describe('allowSignature: false (API-key-only servers)', () => {
+  it('refuses a correctly signed request', async () => {
+    const r = await authenticate(await signed(), null, Date.now(), { allowSignature: false });
+    expect(r.ok).toBe(false);
+    if (r.ok) throw new Error();
+    expect(r.reason).toContain('API key');
+  });
+
+  it('does not spend the signature when the path is closed', async () => {
+    let spent = 0;
+    await authenticate(await signed(), null, Date.now(), {
+      allowSignature: false,
+      consumeSignature: () => { spent++; return true; },
+    });
+    expect(spent).toBe(0);
+  });
+
+  it('still accepts a valid API key', async () => {
+    const key = 'sk_test_key_value';
+    const r = await authenticate({ app: APP, contentSha256: 'x', apiKey: key }, await hashApiKey(key), Date.now(), { allowSignature: false });
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error();
+    expect(r.via).toBe('api-key');
+  });
+
+  it('keeps the signature path open by default', async () => {
+    const r = await authenticate(await signed(), null);
+    expect(r.ok).toBe(true);
+  });
+});

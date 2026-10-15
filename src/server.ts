@@ -1078,6 +1078,7 @@ export function createServer(deps: ServerDeps) {
         // A replayed signature re-uploads the same bytes and burns stamp
         // capacity for free; quota only bounds how fast.
         consumeSignature: (hash, expiresAt, now) => db.consumeSignature(hash, expiresAt, now),
+        allowSignature: cfg.signatureUploads,
       });
       if (!auth.ok) { set.status = 401; return { error: auth.reason }; }
 

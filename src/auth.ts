@@ -82,6 +82,11 @@ export interface AuthOptions {
    * agree in production and diverge under test, which is the worst way round.
    */
   consumeSignature?: (hash: string, expiresAt: number, now: number) => boolean;
+  /**
+   * Whether the wallet-signature path is open at all. Default true. When
+   * false, a request without an API key is refused before any signature work.
+   */
+  allowSignature?: boolean;
 }
 
 export async function authenticate(
@@ -98,7 +103,10 @@ export async function authenticate(
     return { ok: true, address: 'api-key', via: 'api-key' };
   }
 
-  // Signature path — for browsers.
+  // Signature path — for browsers, unless the operator closed it.
+  if (opts.allowSignature === false) {
+    return { ok: false, reason: 'uploads require an API key (x-api-key); wallet signatures are disabled on this server' };
+  }
   if (!req.address || !req.signature || !req.timestamp) {
     return { ok: false, reason: 'provide either an API key, or address + signature + timestamp' };
   }

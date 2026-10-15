@@ -93,6 +93,16 @@ export interface Config {
    * upload. Set false to require a key and keep the node off the open web.
    */
   publicDownloads: boolean;
+  /**
+   * Accept wallet-signature uploads on /api/apps/:app/upload.
+   *
+   * A signature identifies the uploader but does not restrict who that is:
+   * any freshly made address can sign, so on this path only the quotas limit
+   * what lands in the app's batch. Set false to require a per-app API key for
+   * every upload — the choice when uploads come from your own pipelines or
+   * agents, not from the public.
+   */
+  signatureUploads: boolean;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -166,6 +176,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
        */
       corsOrigins: parseOrigins(str('CORS_ORIGINS', '*')),
       publicDownloads: bool('PUBLIC_DOWNLOADS', true),
+      signatureUploads: bool('SIGNATURE_UPLOADS', true),
     };
 
     if (cfg.topupTargetTtlSec <= cfg.topupWhenTtlBelowSec) {

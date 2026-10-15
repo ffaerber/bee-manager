@@ -395,6 +395,12 @@ its own, so each caller has to bring its own key, and anyone with a key can
 use curl, which ignores CORS anyway. To limit which sites can use the API from
 a browser, set a list: `CORS_ORIGINS=https://app.example,https://other.example`.
 
+Wallet-signature uploads to `/api/apps/:app/upload` are on by default, for
+browser dapps that cannot hold a secret. A signature proves *who* uploaded, not
+that they are allowed to: any new address can sign, so only the quotas bound
+that path. If every upload comes from your own pipelines or agents, set
+`SIGNATURE_UPLOADS=false` and the endpoint accepts per-app API keys only.
+
 The admin API and the node passthrough never get CORS headers, and
 `x-admin-token` is never an allowed request header, so a web page cannot call
 the endpoints that spend money.
