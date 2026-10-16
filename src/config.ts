@@ -103,6 +103,12 @@ export interface Config {
    * agents, not from the public.
    */
   signatureUploads: boolean;
+  /**
+   * Port for the Prometheus /metrics listener; 0 disables it. A separate port
+   * from the API on purpose: the API port is what the reverse proxy exposes,
+   * and wallet balances and batch ids should stay on the internal network.
+   */
+  metricsPort: number;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -177,6 +183,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       corsOrigins: parseOrigins(str('CORS_ORIGINS', '*')),
       publicDownloads: bool('PUBLIC_DOWNLOADS', true),
       signatureUploads: bool('SIGNATURE_UPLOADS', true),
+      metricsPort: int('METRICS_PORT', 0, 0),
     };
 
     if (cfg.topupTargetTtlSec <= cfg.topupWhenTtlBelowSec) {

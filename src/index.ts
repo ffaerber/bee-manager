@@ -18,9 +18,12 @@ import { StakeFeed } from './staking';
 import { PeerMapFeed } from './peermap';
 import { seedSettings } from './settings';
 import { readFileSync } from 'node:fs';
+import { render as renderMetrics, collect as collectMetrics } from './metrics';
 
 const cfg = loadConfig();
 const db = new Db(cfg.dbPath);
+// Every action write -> one logfmt line on stdout (-> Loki), unthrottled.
+db.onActionLog = (line) => console.log(line);
 
 /**
  * Quota reservations from a process that is no longer running.
@@ -124,6 +127,19 @@ const price = new PriceFeed({ enabled: !/^(0|false)$/i.test(process.env.PRICE_EN
 const server = createServer({ cfg, bee, db, alerter, poller, adminToken, price });
 server.listen(cfg.port);
 console.log(`listening on :${cfg.port}`);
+
+if (cfg.metricsPort > 0) {
+  Bun.serve({
+    port: cfg.metricsPort,
+    fetch(req) {
+      if (new URL(req.url).pathname !== '/metrics') return new Response('not found', { status: 404 });
+      return new Response(renderMetrics(collectMetrics(poller.last, db)), {
+        headers: { 'content-type': 'text/plain; version=0.0.4; charset=utf-8' },
+      });
+    },
+  });
+  console.log(`metrics on :${cfg.metricsPort}/metrics`);
+}
 
 const shutdown = (sig: string) => {
   console.log(`\n${sig} — shutting down`);

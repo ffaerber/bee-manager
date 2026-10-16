@@ -123,8 +123,44 @@ export interface ApiKeyRow {
   revokedAt: number | null;
 }
 
+/**
+ * One logfmt line per action write, e.g.
+ *   [action] id=12 kind=topup status=blocked batch=468d1b412f label=t4t-gateway-v2 cost_bzz=8.7313 reason="..."
+ * so Loki can filter with `| logfmt | status="failed"`. The alerter dedupes
+ * repeats for hours; this is the unthrottled record of what happened.
+ */
+export function formatActionLog(a: {
+  id: number; kind: string; status: string; batchId: string | null; label?: string | null;
+  appName?: string | null; cost: bigint | string; reason?: string | null; error?: string | null;
+}): string {
+  const q = (v: string) => `"${v.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, ' ')}"`;
+  const bzz = Number(BigInt(a.cost)) / 1e16;
+  const parts = [
+    `id=${a.id}`, `kind=${a.kind}`, `status=${a.status}`,
+    `batch=${a.batchId ? a.batchId.slice(0, 10) : '-'}`,
+  ];
+  if (a.label) parts.push(`label=${q(a.label)}`);
+  if (a.appName) parts.push(`app=${q(a.appName)}`);
+  parts.push(`cost_bzz=${bzz.toFixed(4)}`);
+  if (a.reason) parts.push(`reason=${q(a.reason)}`);
+  if (a.error) parts.push(`error=${q(a.error)}`);
+  return `[action] ${parts.join(' ')}`;
+}
+
 export class Db {
   private db: Database;
+  /** Receives one log line per action insert/status change. Unset = silent (tests). */
+  onActionLog?: (line: string) => void;
+
+  private logAction(id: number | null) {
+    if (id == null || !this.onActionLog) return;
+    const r = this.db.query(`SELECT a.*, b.label FROM actions a LEFT JOIN batches b ON b.batch_id = a.batch_id WHERE a.id = ?`).get(id) as any;
+    if (!r) return;
+    this.onActionLog(formatActionLog({
+      id: r.id, kind: r.kind, status: r.status, batchId: r.batch_id, label: r.label,
+      appName: r.app_name, cost: r.cost ?? '0', reason: r.reason, error: r.error,
+    }));
+  }
 
   constructor(path: string) {
     if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
@@ -472,7 +508,9 @@ export class Db {
       a.ts ?? Date.now(), a.batchId, a.appName, a.kind,
       a.amount.toString(), a.cost.toString(), a.status, a.reason, a.error,
     );
-    return Number(res.lastInsertRowid);
+    const id = Number(res.lastInsertRowid);
+    this.logAction(id);
+    return id;
   }
 
   /**
@@ -511,7 +549,9 @@ export class Db {
       a.amount.toString(), a.cost.toString(), a.status, a.reason, a.error,
       a.batchId, a.kind,
     );
-    return Number((res as any).changes ?? 0) > 0 ? Number(res.lastInsertRowid) : null;
+    const id = Number((res as any).changes ?? 0) > 0 ? Number(res.lastInsertRowid) : null;
+    this.logAction(id);
+    return id;
   }
 
   /**
@@ -535,7 +575,24 @@ export class Db {
     const args: unknown[] = [status, error ?? null, id];
     if (expect) args.push(expect);
     const res = this.db.query(sql).run(...(args as any));
-    return Number((res as any).changes ?? 0) > 0;
+    const changed = Number((res as any).changes ?? 0) > 0;
+    if (changed) this.logAction(id);
+    return changed;
+  }
+
+  /** Action counts by kind and status, optionally only those at/after `since` (ms). */
+  actionCounts(since = 0): { kind: string; status: string; n: number; lastTs: number }[] {
+    return this.db.query(
+      `SELECT kind, status, COUNT(*) AS n, MAX(ts) AS lastTs FROM actions WHERE ts >= ? GROUP BY kind, status`,
+    ).all(since) as any[];
+  }
+
+  /** Completed uploads per app at/after `since` (ms): count and bytes. Reservations without a reference are excluded. */
+  uploadStats(since: number): { app: string; n: number; bytes: number }[] {
+    return this.db.query(
+      `SELECT app_name AS app, COUNT(*) AS n, COALESCE(SUM(bytes), 0) AS bytes
+       FROM uploads WHERE ts >= ? AND reference IS NOT NULL GROUP BY app_name`,
+    ).all(since) as any[];
   }
 
   /**
