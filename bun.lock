@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "swarm-stamp-monitor",
+      "name": "bee-manager",
       "dependencies": {
         "@elysiajs/static": "^1.2.0",
         "elysia": "^1.2.25",

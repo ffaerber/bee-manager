@@ -103,7 +103,7 @@ function loadAdminToken(): string | null {
 }
 const adminToken = loadAdminToken();
 
-console.log('swarm-stamp-monitor');
+console.log('bee-manager');
 console.log(describeConfig(cfg));
 if (cfg.autoTopupEnabled && !cfg.dryRun) {
   console.log('*** AUTO TOP-UP IS ARMED — this process will spend xBZZ without confirmation ***');

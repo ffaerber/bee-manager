@@ -32,7 +32,14 @@ export type AuthResult =
   | { ok: true; address: string; via: 'api-key' }
   | { ok: false; reason: string };
 
-/** The exact string a client must sign. Keep in sync with any client SDK. */
+/**
+ * The exact string a client must sign. Keep in sync with any client SDK.
+ *
+ * The first line is still 'swarm-stamp-monitor', the service's old name, on
+ * purpose: it is part of the signing protocol, and changing it would make
+ * every existing client's signatures invalid. Change it only together with
+ * the clients (and accept both during the switch).
+ */
 export function signingMessage(app: string, contentSha256: string, timestamp: number): string {
   return [
     'swarm-stamp-monitor',

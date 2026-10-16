@@ -1,5 +1,5 @@
 /**
- * Prometheus exposition for the stamp monitor.
+ * Prometheus exposition for bee-manager.
  *
  * Served on its own port (METRICS_PORT), not on the public API port: wallet
  * balances and batch ids are nobody else's business, and the public port is

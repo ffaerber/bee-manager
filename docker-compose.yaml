@@ -1,7 +1,7 @@
 services:
-  swarm-stamp-monitor:
+  bee-manager:
     build: .
-    image: ghcr.io/ffaerber/swarm-stamp-monitor:main
+    image: ghcr.io/ffaerber/bee-manager:main
     restart: unless-stopped
     env_file: [.env]
     environment:

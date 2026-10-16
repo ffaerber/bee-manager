@@ -1148,7 +1148,7 @@ export function createServer(deps: ServerDeps) {
    * pointed here still reports connected.
    */
   if (!existsSync(webDist)) {
-    app.get('/', () => ({ status: 'ok', service: 'swarm-stamp-monitor', dashboard: false }));
+    app.get('/', () => ({ status: 'ok', service: 'bee-manager', dashboard: false }));
   }
 
   if (existsSync(webDist)) {

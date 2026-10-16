@@ -5,7 +5,7 @@ Deliberately shows **no bucket map**: that belongs to a single batch, and having
 it here made the page about one metric instead of the fleet.
 
 ```
-Swarm stamp monitor          [node reachable] [auto top-up on] [Poll now] [Sign out]
+Bee manager                  [node reachable] [auto top-up on] [Poll now] [Sign out]
 
 ┌─ banner ──────────────────────────────────────────────────────────────┐
 │ only when auto top-up is OFF — the exceptional state, not the normal   │

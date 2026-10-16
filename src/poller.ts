@@ -739,9 +739,10 @@ export class Poller {
         event: 'depth_stale', level: 'error', batchId: plan.batchId,
         message: `Batch ${name}: Bee reports depth ${batch?.depth ?? '?'} but the batch is at depth ` +
                  `${chain.depth} on chain, so a dilute to ${plan.newDepth} would revert. Not sent. ` +
-                 `Bee's local stamp record is stale. A plain restart does not fix it — Bee keeps its own ` +
-                 `record. Start Bee once with --resync (it replays postage events and corrects the depth), ` +
-                 `then remove the flag again.`,
+                 `Bee's local stamp record is stale (Bee does not persist depth increases from chain ` +
+                 `events). A plain restart does not fix it. Start Bee once with --resync, then PATCH ` +
+                 `/stamps/<batch> with the unchanged label to save the corrected depth, then restart ` +
+                 `Bee without --resync.`,
       });
       return true;
     }
