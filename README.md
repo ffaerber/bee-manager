@@ -410,6 +410,26 @@ bun install && bun test   # 120 tests
 bun src/dryrun.ts         # one read-only poll: state and intended actions
 ```
 
+## Monitoring
+
+Two outputs, both optional, both for your own monitoring stack:
+
+- **Metrics.** Set `METRICS_PORT` (e.g. `9105`) and Prometheus can scrape
+  `http://<host>:9105/metrics`: poll health, per-batch TTL / depth /
+  utilization / usable / immutable / managed, wallet xBZZ and xDAI, burn and
+  runway, 24 h spend, actions by kind and status, uploads per app (all
+  prefixed `beemgr_`). It is a separate port on purpose — keep it off the
+  reverse proxy, it carries wallet balances.
+- **Action log.** Every top-up, dilute and buy, and every status change of
+  one, is a single logfmt line on stdout:
+  `[action] id=… kind=topup status=failed batch=… label="…" cost_bzz=… reason="…" error="…"`.
+  With Loki: `{container_name=~".*bee-manager.*"} |= "[action]" | logfmt | status="failed"`.
+
+`grafana/bee-manager.json` is a ready dashboard for both (Dashboards → New →
+Import). It asks for a Prometheus and a Loki data source, and its *Log stream*
+box holds the Loki selector for the container — the default matches a
+container named `*bee-manager*`.
+
 ## Layout
 
 | Path | |
