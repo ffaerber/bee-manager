@@ -198,10 +198,10 @@ export function createBeeApi({ bee, db, poller, adminToken, publicDownloads }: B
 
     const bytes = new Uint8Array(await request.arrayBuffer());
     const limits = limitsFor(app, 'api-key');
-    // Two steps on purpose. checkQuota explains WHY a request is refused —
-    // which budget, how much is left — and the reservation below is what
-    // actually enforces it. Reporting the reason from an atomic INSERT is
-    // awkward; racing on a friendly message is not acceptable.
+    // API keys have no daily limits (see PIPELINE_LIMITS); checkQuota still
+    // refuses an empty or oversized body. The reservation below records the
+    // upload before it happens, and is what would enforce a limit if one were
+    // ever set — reporting the reason from an atomic INSERT is awkward.
     const verdict = checkQuota(db, app, 'api-key', bytes.byteLength, limits);
     if (!verdict.allowed) { set.status = 429; return beeError(429, verdict.reason); }
 

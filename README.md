@@ -201,9 +201,12 @@ the loss instead: per-request size, per-address bytes and count, and a per-app
 daily byte budget that is the actual blast radius.
 
 Limits follow the auth method, because an API key is a real secret and a wallet
-is not: 64 MB per request for key-authenticated pipelines, 5 MB for signatures.
-The shared per-app daily budget is *not* raised for pipelines — it bounds a bad
-day for both.
+is not. **API-key uploads have no daily limits** — only a 64 MB cap per request,
+since a body is read into memory whole. (They used to share one counter of 50
+uploads a day per key, which stopped an image board mid-afternoon.) Signature
+uploads keep every limit: 5 MB per request, per-address bytes and count, and the
+per-app daily budget, which API-key uploads also count toward. All uploads are
+recorded either way, for the dashboard and metrics.
 
 ### Deploying a site
 

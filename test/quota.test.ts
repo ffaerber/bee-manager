@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'bun:test';
 import { Db, type AppRow } from '../src/db';
-import { checkQuota, chunksFor, limitsFor, DEFAULT_LIMITS, PIPELINE_LIMITS, type QuotaLimits } from '../src/quota';
+import { checkQuota, chunksFor, limitsFor, DEFAULT_LIMITS, PIPELINE_LIMITS, UNLIMITED, type QuotaLimits } from '../src/quota';
 
 const MB = 1024 * 1024;
 const ADDR = '0xAbC0000000000000000000000000000000000001';
@@ -130,13 +130,27 @@ describe('limits by authentication method', () => {
     expect(limitsFor(app).maxUploadBytes).toBe(DEFAULT_LIMITS.maxUploadBytes);
   });
 
-  it('does NOT raise the shared app budget for pipelines — it bounds a bad day for both', () => {
-    expect(limitsFor(app, 'api-key').appDailyBytes).toBe(limitsFor(app, 'signature').appDailyBytes);
+  it('puts no daily limit on API-key callers — only the per-request size', () => {
+    const pipeline = limitsFor(app, 'api-key');
+    expect(pipeline.appDailyBytes).toBe(UNLIMITED);
+    expect(pipeline.addressDailyBytes).toBe(UNLIMITED);
+    expect(pipeline.addressDailyUploads).toBe(UNLIMITED);
+    // A day's worth of uploads — far past the old cap of 50 — still passes.
+    for (let i = 0; i < 60; i++) db.recordUpload(app.name, 'api-key', 1024 * 1024, 'r');
+    expect(checkQuota(db, app, 'api-key', 1024, pipeline).allowed).toBe(true);
+    expect(checkQuota(db, app, 'api-key', 65 * MB, pipeline).allowed).toBe(false);
   });
 
-  it('still stops a pipeline once the shared app budget is gone', () => {
+  it('keeps every daily limit on signature callers', () => {
+    const browser = limitsFor(app, 'signature');
+    expect(browser.appDailyBytes).toBe(DEFAULT_LIMITS.appDailyBytes);
+    expect(browser.addressDailyUploads).toBe(DEFAULT_LIMITS.addressDailyUploads);
+  });
+
+  it('lets an API key through a spent app budget, while signature callers stay stopped', () => {
     for (let i = 0; i < 5; i++) db.recordUpload(app.name, `0x${i}`, 60 * MB, 'r');
-    const v = checkQuota(db, app, 'ci', 10 * MB, limitsFor(app, 'api-key'));
+    expect(checkQuota(db, app, 'ci', 10 * MB, limitsFor(app, 'api-key')).allowed).toBe(true);
+    const v = checkQuota(db, app, ADDR, 1024, limitsFor(app, 'signature'));
     expect(v.allowed).toBe(false);
     expect(v.appBudgetExhausted).toBe(true);
   });

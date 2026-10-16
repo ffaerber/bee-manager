@@ -12,7 +12,7 @@ import { Alerter } from '../src/alerts';
 import { Poller } from '../src/poller';
 import { createServer } from '../src/server';
 import { loadConfig } from '../src/config';
-import { PIPELINE_LIMITS } from '../src/quota';
+import { PIPELINE_LIMITS, UNLIMITED } from '../src/quota';
 
 const BATCH = 'cc'.repeat(32);
 const ADMIN = 'test-admin';
@@ -151,14 +151,14 @@ describe('#5 — concurrent uploads must not overshoot the daily budget', () => 
     writeDelayMs = 120;
 
     /**
-     * Raced on the UPLOAD COUNT rather than on bytes.
-     *
-     * Both dimensions go through the same reservation, and the byte budget for
-     * an API key is 256 MB — allocating that in a test to prove a point is
-     * silly when the count limit is 50 and a 1 kB body costs nothing.
+     * API keys have no daily cap (PIPELINE_LIMITS). There used to be one of 50
+     * uploads, shared by every upload made with the key, which stopped an
+     * image board mid-day — so race well past it and expect every one through.
+     * The cap logic itself is still raced, on the signature path's limits,
+     * in the tests below.
      */
-    const limit = PIPELINE_LIMITS.addressDailyUploads;
-    const attempts = limit + 20;
+    expect(PIPELINE_LIMITS.addressDailyUploads).toBe(UNLIMITED);
+    const attempts = 70;
     const payload = new Uint8Array(1024);
 
     const results = await Promise.all(Array.from({ length: attempts }, () =>
@@ -170,15 +170,11 @@ describe('#5 — concurrent uploads must not overshoot the daily budget', () => 
 
     const accepted = results.filter((s) => s === 200).length;
 
-    // The cap must hold under concurrency. Before the fix every request read
-    // the same pre-upload count of 0 and all of them passed.
-    expect(accepted).toBeLessThanOrEqual(limit);
-    expect(accepted).toBeGreaterThan(0);
+    expect(accepted).toBe(attempts);
     // The ledger must agree with what Bee was actually asked to store.
     expect(writes.filter((w) => w === '/bytes')).toHaveLength(accepted);
-    // Quota is accounted per KEY, not per batch: an API key resolves to the
-    // app name `key:<name>`, so revoking one key cannot spend another's
-    // budget. Asserted explicitly because it is the scope the cap applies to.
+    // Every upload is still recorded, per KEY: an API key resolves to the app
+    // name `key:<name>`, which is what the dashboard and metrics count.
     expect(db.uploadCount('key:site')).toBe(accepted);
   });
 

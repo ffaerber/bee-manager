@@ -51,21 +51,26 @@ export const DEFAULT_LIMITS: QuotaLimits = {
   addressDailyUploads: 100,
 };
 
+/** No daily limit: larger than anything a day of uploads can reach. */
+export const UNLIMITED = Number.MAX_SAFE_INTEGER;
+
 /**
- * Deploy pipelines, authenticated by a per-app API key — a secret only you
- * hold, so the caller is trusted in a way a browser never is. A site deploy is
- * one tar of the whole build (pinkchainsaw's is ~900 kB, but a media-heavy site
- * is easily tens of MB), which the browser-facing 5 MB cap would reject.
+ * Callers with a per-app API key — a secret only you and your apps hold, so
+ * the caller is trusted in a way a wallet signature never is. No daily
+ * counters: they only ever blocked the owner's own apps (one key's uploads all
+ * share one counter, so 50 a day stopped an image board mid-afternoon). What
+ * stays is the per-request cap, because a body is read into memory whole; a
+ * site deploy is one tar of the whole build, so it is well above the
+ * browser-facing 5 MB.
  *
- * The app-wide daily budget is intentionally NOT raised here: it is shared with
- * the browser path and is what bounds a bad day, so it stays the ceiling for
- * both.
+ * Uploads are still recorded (dashboard, metrics, history), and still count
+ * toward the signature path's app-wide budget, which keeps bounding strangers.
  */
 export const PIPELINE_LIMITS: QuotaLimits = {
-  ...DEFAULT_LIMITS,
   maxUploadBytes: 64 * MB,
-  addressDailyBytes: 256 * MB,
-  addressDailyUploads: 50,
+  appDailyBytes: UNLIMITED,
+  addressDailyBytes: UNLIMITED,
+  addressDailyUploads: UNLIMITED,
 };
 
 /** Chunks a payload occupies — what actually consumes batch capacity. */
