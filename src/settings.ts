@@ -68,6 +68,8 @@ export const EDITABLE: Spec[] = [
     label: 'Dry run', hint: 'plan everything, spend nothing' },
   { group: 'automation', key: 'diluteEnabled', kind: 'bool', looserWhen: null,
     label: 'Auto dilute', hint: 'add capacity when a bucket nears full' },
+  { group: 'automation', key: 'diluteMutable', kind: 'bool', looserWhen: null,
+    label: 'Dilute mutable batches', hint: 'off: full mutable batches recycle old chunks instead' },
 
   // Both are durations with a sensible working range, so both are sliders.
   // The trigger is continuous: any day between two and a month is a reasonable
@@ -119,6 +121,7 @@ export function envValue(cfg: Config, key: string): string | number | boolean | 
     case 'topupWhenTtlBelowDays': return cfg.topupWhenTtlBelowSec / 86_400;
     case 'topupTargetTtlDays': return cfg.topupTargetTtlSec / 86_400;
     case 'diluteEnabled': return cfg.diluteEnabled;
+    case 'diluteMutable': return cfg.diluteMutable;
     case 'diluteWhenUtilizationAbove': return cfg.diluteWhenUtilizationAbove;
     case 'maxAutoDiluteDepth': return cfg.maxAutoDiluteDepth;
     case 'maxTopupBzzPerBatch': return plurToBzz(cfg.maxTopupPlurPerBatch);
@@ -186,6 +189,7 @@ export function applySettings(cfg: Config, stored: Record<string, string>): Conf
       if (spec.key === 'autoTopupEnabled') out.autoTopupEnabled = v;
       if (spec.key === 'dryRun') out.dryRun = v;
       if (spec.key === 'diluteEnabled') out.diluteEnabled = v;
+      if (spec.key === 'diluteMutable') out.diluteMutable = v;
       continue;
     }
 

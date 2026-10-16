@@ -207,8 +207,12 @@ export function evaluateBatch(batch: Batch, ctx: EvalContext): Plan {
   // reads immutableFlag. Dilution is in fact the only rescue for an immutable
   // batch that has filled a bucket — at that point it refuses ALL uploads, and
   // doubling bucket capacity is what makes it usable again.
+  // Mutable batches are the opposite case: when full they overwrite their
+  // oldest chunks and keep accepting uploads, so unless DILUTE_MUTABLE is set
+  // they only ever get TTL top-ups.
   const needsDilute =
     c.diluteEnabled &&
+    (c.diluteMutable || batch.immutableFlag) &&
     batch.depth < p.maxAutoDiluteDepth &&
     batch.utilizationRatio >= diluteTriggerFor(batch.depth, p.diluteWhenUtilizationAbove);
 

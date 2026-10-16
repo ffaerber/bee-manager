@@ -37,7 +37,9 @@ function ctx(over: Partial<EvalContext> = {}, envOver: Record<string, string> = 
   return {
     config: loadConfig({
       MAX_TOPUP_BZZ_PER_BATCH: '500', MAX_TOPUP_BZZ_PER_DAY: '1000',
-      MIN_WALLET_BZZ: '0', MIN_WALLET_XDAI: '0', ...envOver,
+      // The dilution mechanics below are tested on mutable fixtures; the
+      // mutable/immutable default has its own tests.
+      MIN_WALLET_BZZ: '0', MIN_WALLET_XDAI: '0', DILUTE_MUTABLE: 'true', ...envOver,
     } as any),
     wallet, chain, spentLast24h: 0n, inFlight: new Set(), ...over,
   };
@@ -104,6 +106,17 @@ describe('dilution', () => {
     // immutableFlag. A full bucket makes an immutable batch refuse ALL
     // uploads, so dilution is the difference between dead and usable.
     const p = evaluateBatch({ ...full, immutableFlag: true }, ctx(funded));
+    expect(p.kind).toBe('dilute');
+  });
+
+  it('by default only tops up a full mutable batch — it recycles old chunks instead', () => {
+    const p = evaluateBatch(withTTL(10, { utilizationRatio: 1 }), ctx(funded, { DILUTE_MUTABLE: '' }));
+    expect(p.kind).toBe('topup');
+    expect(evaluateBatch(full, ctx(funded, { DILUTE_MUTABLE: 'false' })).kind).not.toBe('dilute');
+  });
+
+  it('still dilutes a full immutable batch when DILUTE_MUTABLE is off', () => {
+    const p = evaluateBatch({ ...full, immutableFlag: true }, ctx(funded, { DILUTE_MUTABLE: 'false' }));
     expect(p.kind).toBe('dilute');
   });
 

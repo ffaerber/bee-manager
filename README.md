@@ -114,6 +114,14 @@ recycled chunk, which is far cheaper than repeatedly halving a batch's life.
 > than pre-empting it. Deep immutable batches are fine; they hit the one-slot
 > rule long before anything fills.
 
+**Mutable batches are not auto-diluted by default** (`DILUTE_MUTABLE=false`).
+A full mutable batch keeps accepting uploads by overwriting its oldest chunks,
+so diluting it only pays — permanently, and with half the TTL — to keep data
+that was written to a recyclable batch in the first place. Such batches only
+get TTL top-ups. Set `DILUTE_MUTABLE=true` (or flip *Dilute mutable batches* on
+the dashboard) if a mutable batch holds data that must not be recycled; a
+manual dilute from the batch page works either way.
+
 `maxAutoDiluteDepth` (default 24) bounds this: each step doubles what the batch
 costs per day, so an unbounded rule would answer "this batch is full" by making
 it permanently expensive.

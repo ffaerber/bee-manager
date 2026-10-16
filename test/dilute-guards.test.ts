@@ -41,7 +41,7 @@ function boot() {
     BEE_URL: `http://127.0.0.1:${upstream.port}`, DB_PATH: ':memory:',
     AUTO_TOPUP_ENABLED: 'true', DRY_RUN: 'false',
     TOPUP_WHEN_TTL_BELOW_DAYS: '2', TOPUP_TARGET_TTL_DAYS: '60',
-    DILUTE_WHEN_UTILIZATION_ABOVE: '0.9',
+    DILUTE_WHEN_UTILIZATION_ABOVE: '0.9', DILUTE_MUTABLE: 'true',
     MAX_TOPUP_BZZ_PER_BATCH: '500', MAX_TOPUP_BZZ_PER_DAY: '2000',
     MIN_WALLET_BZZ: '0', MIN_WALLET_XDAI: '0',
   });

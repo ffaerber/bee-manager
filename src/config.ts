@@ -59,6 +59,13 @@ export interface Config {
   topupTargetTtlSec: number;
   diluteWhenUtilizationAbove: number;
   diluteEnabled: boolean;
+  /**
+   * Also auto-dilute mutable batches. Off by default: a full mutable batch
+   * keeps accepting uploads by recycling its oldest chunks, so dilution only
+   * costs money (and halves TTL) to keep data that was meant to be temporary.
+   * Immutable batches refuse uploads when full and are always eligible.
+   */
+  diluteMutable: boolean;
   maxAutoDiluteDepth: number;
 
   maxTopupPlurPerBatch: bigint;
@@ -141,6 +148,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       topupTargetTtlSec: int('TOPUP_TARGET_TTL_DAYS', 60, 1) * 86_400,
       diluteWhenUtilizationAbove: Number(str('DILUTE_WHEN_UTILIZATION_ABOVE', '0.8')),
       diluteEnabled: bool('DILUTE_ENABLED', true),
+      diluteMutable: bool('DILUTE_MUTABLE', false),
       /**
        * Automatic dilution stops here.
        *
@@ -211,7 +219,7 @@ export function describeConfig(c: Config): string {
     // Dilution was armed by default and reported nowhere. It is irreversible
     // and permanently raises the burn rate, so it belongs in the banner beside
     // auto top-up rather than being discovered from a depth that changed.
-    `dilute=${c.diluteEnabled ? `ON >${c.diluteWhenUtilizationAbove * 100}% up to depth ${c.maxAutoDiluteDepth}` : 'off'}`,
+    `dilute=${c.diluteEnabled ? `ON >${c.diluteWhenUtilizationAbove * 100}% up to depth ${c.maxAutoDiluteDepth}${c.diluteMutable ? '' : ', immutable only'}` : 'off'}`,
     `webhook=${c.webhookUrl ? 'set' : 'none'}`,
   ].join(' | ');
 }

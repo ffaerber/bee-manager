@@ -236,7 +236,7 @@ describe('#10 / #11 — bad readings and stranded composites', () => {
       TOPUP_WHEN_TTL_BELOW_DAYS: '14', TOPUP_TARGET_TTL_DAYS: '60',
       MAX_TOPUP_BZZ_PER_BATCH: '500', MAX_TOPUP_BZZ_PER_DAY: '2000',
       MIN_WALLET_BZZ: '0', MIN_WALLET_XDAI: '0',
-      DILUTE_ENABLED: 'true', DILUTE_WHEN_UTILIZATION_ABOVE: '0.8',
+      DILUTE_ENABLED: 'true', DILUTE_WHEN_UTILIZATION_ABOVE: '0.8', DILUTE_MUTABLE: 'true',
     });
     const cfg = loadConfig();
     process.env = saved;
