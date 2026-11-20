@@ -162,6 +162,19 @@ export class ReachabilityFeed {
       const claimsFailure = b?.unreachable === true;
       const declined = claimsFailure
         && (/breaker/i.test(err ?? '') || (Number.isFinite(ms) && ms < 1));
+      /**
+       * The opposite case: the dial got through, and only what came after it
+       * failed. "peer exists" is the handshake finding that the observer and
+       * this node are already connected, so the duplicate is closed ("sent go
+       * away"). Getting that far takes a TCP connection to the advertised
+       * address and a libp2p handshake with this very node.
+       *
+       * Seen live (2026-11-19): unreachable=true, "network status unknown: peer
+       * exists, full close: connection closed (local) ... sent go away",
+       * handshake 167ms, carrying the node's own user agent. The dashboard said
+       * UNDIALABLE while Bee reported reachability=Public.
+       */
+      const answered = claimsFailure && /peer exists/i.test(err ?? '');
 
       return (this.cached = {
         overlay,
@@ -169,6 +182,7 @@ export class ReachabilityFeed {
         // Coerced explicitly so `undefined` cannot read as "unknown" when it
         // actually means the dial worked.
         unreachable: declined ? null
+          : answered ? false
           : typeof b?.unreachable === 'boolean' ? b.unreachable : false,
         handshakeMs: Number.isFinite(ms) ? ms : null,
         userAgent: typeof b?.userAgent === 'string' ? b.userAgent : null,

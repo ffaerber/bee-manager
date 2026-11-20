@@ -153,6 +153,19 @@ describe('telling a refusal apart from a failure', () => {
     expect(r!.unreachable).toBe(true);
   });
 
+  it('counts a dial that reached an already-connected node as dialable', async () => {
+    // The observer got a TCP connection and a handshake from this node, then
+    // closed the duplicate because the two were already peered.
+    const r = await mk({
+      overlay: OVERLAY, unreachable: true,
+      error: 'network status unknown: peer exists, full close: connection closed (local): code: 0x0: transport error: sent go away, code: 0',
+      handshakeDurationMilliseconds: 167,
+      userAgent: 'bee/2.8.3-8e9bb914 go1.26.8 linux/amd64',
+    }).get(OVERLAY);
+    expect(r!.unreachable).toBe(false);
+    expect(r!.error).toMatch(/peer exists/);
+  });
+
   it('leaves a successful reading alone however fast it was', async () => {
     // Only a claimed failure is ever reinterpreted; a quick handshake is a
     // good sign, not a suspicious one.
